@@ -14,7 +14,7 @@ function notice(message){lastNotice=message||'';$('notice').textContent=lastNoti
 let serial=0;
 function request(action,payload){return new Promise((resolve,reject)=>{
  if(!endpoint){reject(new Error('Die Verbindung zum Spielserver ist noch nicht eingerichtet.'));return;}
- const callback=`strommarkt_${Date.now()}_${++serial}`,script=document.createElement('script'),url=new URL(endpoint),timer=setTimeout(()=>finish(false,'Der Spielserver antwortet nicht. Bitte erneut versuchen.'),40000);let done=false;
+ const callback=`strommarkt_${Date.now()}_${++serial}`,script=document.createElement('script'),url=new URL(endpoint),timer=setTimeout(()=>finish(false,'Der Spielserver antwortet nicht. Bitte erneut versuchen.'),120000);let done=false;
  function finish(ok,value){if(done)return;done=true;clearTimeout(timer);script.remove();delete window[callback];ok?resolve(value):reject(new Error(value||'Verbindung fehlgeschlagen.'));}
  window[callback]=r=>r&&r.ok?finish(true,r.data):finish(false,r&&r.error);
  url.searchParams.set('callback',callback);url.searchParams.set('action',action);url.searchParams.set('payload',JSON.stringify(payload));script.src=url.toString();script.onerror=()=>finish(false,'Der Spielserver ist nicht erreichbar.');document.head.append(script);
@@ -22,7 +22,7 @@ function request(action,payload){return new Promise((resolve,reject)=>{
 async function api(action,payload){
  for(let attempt=0;attempt<10;attempt++){
   try{return await request(action,payload);}catch(e){
-   if(e.message!=='SERVER_BELEGT'||attempt===9)throw e;
+   if(!['SERVER_BELEGT','Der Spielserver antwortet nicht. Bitte erneut versuchen.'].includes(e.message)||attempt===9)throw e;
    if(action!=='adminState'&&action!=='playerState')notice('Viele Anfragen gleichzeitig. Bitte warten …');
    await new Promise(resolve=>setTimeout(resolve,1000+Math.floor(Math.random()*4000)));
   }
@@ -84,7 +84,7 @@ $('copy-link').addEventListener('click',async()=>{try{await navigator.clipboard.
 $('create-form').addEventListener('submit',async e=>{e.preventDefault();code='';token=secret();const result=await action('create',{instructorKey:stored.instructorKey});if(result){code=result.code;stored.admins[code]=token;stored.activeAdmin=code;persist();render();}else token='';});
 $('resume-form').addEventListener('submit',async e=>{e.preventDefault();const c=$('resume-code').value.trim().toUpperCase();if(!stored.admins[c]){notice('Für diesen Sitzungscode ist auf diesem Gerät kein Leitungszugang gespeichert.');return;}code=c;token=stored.admins[c];const result=await action('adminState');if(result){stored.activeAdmin=c;persist();render();}else{code='';token='';render();}});
 $('role-form').addEventListener('submit',async e=>{e.preventDefault();const choice=document.querySelector('input[name=role]:checked');if(choice)await action('chooseRole',{role:choice.value});});
-$('start-round').addEventListener('click',()=>action('start'));$('close-round').addEventListener('click',()=>action('close'));
+$('start-round').addEventListener('click',()=>action('start',{previousRound:state.round}));$('close-round').addEventListener('click',()=>action('close',{round:state.round}));
 $('bid-form').addEventListener('submit',async e=>{e.preventDefault();const bid=Number($('bid').value);if(!Number.isInteger(bid)||bid<0||bid>500){notice('Bitte einen ganzen Betrag zwischen 0 und 500 eingeben.');return;}const wouldLose=state.me.role==='Kauf'?bid>state.me.value:bid<state.me.value;if(wouldLose&&!window.confirm('Dieses Gebot kann bei einem Abschluss zu einem Verlust führen. Möchtest du es trotzdem abgeben?'))return;await action('bid',{round:state.round,bid});});
 $('leave').addEventListener('click',()=>{if(!window.confirm('Sitzung auf diesem Gerät verlassen? Du kannst mit demselben Sitzungscode zurückkehren.'))return;if(isAdmin)stored.activeAdmin='';else stored.activePlayer='';persist();state=null;code='';token='';notice('');render();});
 $('new-session').addEventListener('click',()=>{stored.activeAdmin='';persist();code='';token='';state=null;render();});
