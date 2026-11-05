@@ -49,10 +49,10 @@ function render(){
  $('mode-link').textContent=isAdmin?'Zur Teilnahme':'Spielleitung';$('mode-link').href=isAdmin?'./':'?leitung=1';visible('join',!code&&!isAdmin);visible('admin-create',!code&&isAdmin);visible('game',Boolean(code&&state));if(!state||!code)return;
  const s=state;$('session-code').textContent=s.code;$('status-label').textContent=phaseText(s);$('status-dot').className='dot '+s.status;
  $('round-number').textContent=String(s.round||0).padStart(2,'0');$('round-caption').textContent=s.round?`RUNDE ${s.round} VON 5`:'MARKT';
- let title,copy;if(s.status==='lobby'){title=isAdmin?'Der Markt öffnet gleich':'Du bist dabei';copy=isAdmin?'Warte, bis alle beigetreten sind. Mit dem Start werden Rollen und persönliche Werte zugeteilt.':'Warte, bis die Spielleitung den Markt öffnet. Deine private Karte erscheint dann hier.';}
- else if(s.status==='open'){title=isAdmin?'Die Auktion läuft':'Dein Gebot';copy=isAdmin?'Die Studierenden geben verdeckte Gebote ab. Die Runde endet automatisch nach Ablauf der Zeit.':'Gib deinen Preis für höchstens 1 MWh ein. Alle erfolgreichen Gebote erhalten denselben Marktpreis.';}
- else if(s.status==='review'){title=`Runde ${s.round} ist ausgewertet`;copy=isAdmin?'Prüfe das Ergebnis und starte anschließend die nächste Runde.':'Die Spielleitung startet gleich die nächste Runde. Dein persönlicher Wert bleibt gleich.';}
- else{title='Alle fünf Runden sind beendet';copy='Vergleiche die erzielten Preise mit Angebot und Nachfrage aus den privaten Werten.';}
+ let title,copy;if(s.status==='lobby'){title=isAdmin?'Der Markt öffnet gleich':'Du bist dabei';copy=isAdmin?'Warte, bis alle beigetreten sind.':'Warte auf den Start.';}
+ else if(s.status==='open'){title=isAdmin?'Die Auktion läuft':'Dein Gebot';copy=isAdmin?'Die Gebote sind verdeckt.':'Gib deinen Preis für 1 MWh ein.';}
+ else if(s.status==='review'){title=`Runde ${s.round} ist ausgewertet`;copy=isAdmin?'Starte die nächste Runde.':'Warte auf die nächste Runde.';}
+ else{title='Alle fünf Runden sind beendet';copy='Vergleiche Preise und Mengen.';}
  $('stage-title').textContent=title;$('stage-copy').textContent=copy;visible('clock',s.status==='open');drawTimer();
  visible('admin-controls',isAdmin);visible('start-round',isAdmin&&(s.status==='lobby'||s.status==='review'));$('start-round').textContent=s.status==='lobby'?'Runde 1 starten':`Runde ${s.round+1} starten`;
  $('start-round').disabled=busy||(s.status==='lobby'&&s.players<2);visible('close-round',isAdmin&&s.status==='open');visible('new-session',isAdmin&&s.status==='finished');
