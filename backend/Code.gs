@@ -83,7 +83,6 @@ function closeRound(s){
   appendMany('Ergebnisse',pending);
   s.status=Number(s.round)>=5?'finished':'review';s.deadline='';update('Sitzungen',s);
 }
-function tick(s){if(s.status==='open'&&Number(s.deadline)<=Date.now())closeRound(s);return s;}
 function state(s,viewer){
   const players=allPlayers(s),summary=rows('Runden').filter(x=>x.code===s.code).map(x=>({round:Number(x.round),price:x.price===''?null:Number(x.price),quantity:Number(x.quantity),submitted:Number(x.submitted)}));
   const base={code:s.code,status:s.status,round:Number(s.round),deadline:s.deadline?Number(s.deadline):null,duration:Number(s.duration),players:players.length,submitted:s.status==='open'?ordersFor(s).length:0,history:summary};
@@ -102,8 +101,9 @@ function state(s,viewer){
 }
 function dispatch(action,p){
   if(action==='create'){
-    const adminHash=requireToken(p.token),duration=Number(p.duration);
-    if(!Number.isInteger(duration)||duration<30||duration>600)throw Error('Rundendauer muss zwischen 30 und 600 Sekunden liegen.');
+    const instructorHash=PropertiesService.getScriptProperties().getProperty('INSTRUCTOR_KEY_HASH');
+    if(!instructorHash||requireToken(p.instructorKey)!==instructorHash)throw Error('Leitungszugang ungültig.');
+    const adminHash=requireToken(p.token),duration=0;
     const s={code:newCode(),adminHash:adminHash,status:'lobby',round:0,deadline:'',duration:duration,created:new Date().toISOString()};append('Sitzungen',s);return state(s,'admin');
   }
   let s=sessionFor(p.code);
@@ -118,7 +118,7 @@ function dispatch(action,p){
     adminFor(s,p.token);if(s.status==='lobby'){initializeRoles(s);s.round=1;}
     else if(s.status==='review'&&Number(s.round)<5)s.round=Number(s.round)+1;
     else throw Error('Die nächste Runde kann noch nicht gestartet werden.');
-    s.status='open';s.deadline=Date.now()+Number(s.duration)*1000;update('Sitzungen',s);return state(s,'admin');
+    s.status='open';s.deadline='';update('Sitzungen',s);return state(s,'admin');
   }
   if(action==='close'){adminFor(s,p.token);if(s.status!=='open')throw Error('Es läuft gerade keine Runde.');closeRound(s);return state(s,'admin');}
   if(action==='bid'){
@@ -140,14 +140,9 @@ function doGet(e){
   try{
     let p={};try{p=JSON.parse(args.payload||'{}');}catch(_){throw Error('Ungültige Anfrage.');}
     const action=String(args.action||''),readOnly=action==='adminState'||action==='playerState';
-    if(readOnly){
-      const s=sessionFor(p.code);
-      if(s.status==='open'&&Number(s.deadline)<=Date.now()){
-        lock.waitLock(20000);locked=true;resetCache();tick(sessionFor(p.code));flushAndRelease(lock);locked=false;resetCache();
-      }
-    }else{
+    if(!readOnly){
       lock.waitLock(20000);locked=true;resetCache();
-      if(action==='create')ensureTables();else tick(sessionFor(p.code));
+      if(action==='create')ensureTables();
     }
     response={ok:true,data:dispatch(action,p)};
   }catch(err){response={ok:false,error:String(err.message||err)};}
