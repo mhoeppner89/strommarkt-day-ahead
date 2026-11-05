@@ -1,7 +1,10 @@
 (()=>{'use strict';
 const $=id=>document.getElementById(id), query=new URLSearchParams(location.search), isAdmin=query.has('leitung'), STORAGE='strommarkt-dayahead-v1', endpoint=window.STROMMARKT_ENDPOINT||'';
-const fresh=()=>({players:{},admins:{},activePlayer:'',activeAdmin:''});
+const fresh=()=>({players:{},admins:{},activePlayer:'',activeAdmin:'',instructorKey:''});
 let stored;try{stored={...fresh(),...JSON.parse(localStorage.getItem(STORAGE)||'{}')};}catch(_){stored=fresh();}
+const fragment=new URLSearchParams(location.hash.slice(1)),incomingKey=fragment.get('key')||'';
+if(isAdmin&&/^[a-f0-9]{48}$/.test(incomingKey)){stored.instructorKey=incomingKey;localStorage.setItem(STORAGE,JSON.stringify(stored));}
+const room=(query.get('raum')||'').toUpperCase();
 let code=isAdmin?stored.activeAdmin:stored.activePlayer,token=code?(isAdmin?stored.admins[code]:stored.players[code]):'',state=null,busy=false,lastNotice='',lastRound=null;
 const persist=()=>localStorage.setItem(STORAGE,JSON.stringify(stored));
 const secret=()=>Array.from(crypto.getRandomValues(new Uint8Array(24)),x=>x.toString(16).padStart(2,'0')).join('');
@@ -24,8 +27,6 @@ async function action(name,extra={}){
 }
 function el(tag,cls,text){const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=text;return x;}
 function addRow(parent,cells){const tr=el('tr');cells.forEach(v=>tr.appendChild(el('td','',String(v))));parent.appendChild(tr);}
-function phaseText(s){if(s.status==='lobby')return 'Warten auf den Start';if(s.status==='open')return `Runde ${s.round} · Gebote geöffnet`;if(s.status==='review')return `Runde ${s.round} · ausgewertet`;return 'Spiel beendet';}
-function drawTimer(){if(!state||state.status!=='open')return;const remaining=Math.max(0,Math.ceil((state.deadline-Date.now())/1000));$('timer').textContent=`${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`;}
 function renderHistory(s){const hist=$('history');hist.replaceChildren();const mine=s.me?s.me.results:[];
  s.history.forEach(h=>{const own=mine.find(r=>r.round===h.round);let personal=isAdmin?`${h.submitted} Gebote`:own?(own.matched?`${own.points>=0?'+':''}${own.points} Punkte`:'Kein Handel'):'–';addRow(hist,[h.round,h.price===null?'Kein Handel':money(h.price),`${h.quantity} MWh`,personal]);});
  $('personal-heading').textContent=isAdmin?'Abgaben':'Dein Ergebnis';visible('history-panel',s.history.length>0);
@@ -46,14 +47,15 @@ function drawChart(data,mode){const holder=$('chart');holder.replaceChildren();c
  else $('benchmark').textContent='Bei diesen privaten Werten gibt es keinen beidseitig vorteilhaften Handel.';
 }
 function render(){
- $('mode-link').textContent=isAdmin?'Zur Teilnahme':'Spielleitung';$('mode-link').href=isAdmin?'./':'?leitung=1';visible('join',!code&&!isAdmin);visible('admin-create',!code&&isAdmin);visible('game',Boolean(code&&state));if(!state||!code)return;
- const s=state;$('session-code').textContent=s.code;
+ visible('join',!code&&!isAdmin);visible('admin-create',!code&&isAdmin);visible('game',Boolean(code&&state));if(!state||!code)return;
+ const s=state;$('session-code').textContent=s.code;visible('share',isAdmin&&s.status==='lobby');
+ if(isAdmin){const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('raum',s.code);$('room-link').href=url.href;$('room-link').textContent=url.href;}
  $('round-caption').textContent=s.round?`Runde ${s.round} von 5`:'Markt';
  let title;if(s.status==='lobby')title=isAdmin?'Warten auf Teilnehmende':'Du bist dabei';
  else if(s.status==='open')title=isAdmin?'Auktion läuft':'Dein Gebot für 1 MWh';
  else if(s.status==='review')title=`Runde ${s.round} ausgewertet`;
  else title='Spiel beendet';
- $('stage-title').textContent=title;visible('clock',s.status==='open');drawTimer();
+ $('stage-title').textContent=title;
  visible('admin-controls',isAdmin);visible('start-round',isAdmin&&(s.status==='lobby'||s.status==='review'));$('start-round').textContent=s.status==='lobby'?'Runde 1 starten':`Runde ${s.round+1} starten`;
  $('start-round').disabled=busy||(s.status==='lobby'&&s.players<2);visible('close-round',isAdmin&&s.status==='open');visible('new-session',isAdmin&&s.status==='finished');
  visible('admin-card',isAdmin);visible('private-card',!isAdmin&&Boolean(s.me&&s.me.role));
@@ -67,13 +69,15 @@ function render(){
 }
 function renderChart(){if(!state||!state.reveal)return;const mode=$('curve-select').value;const values=mode==='values'?state.reveal:(state.bids||[]).filter(x=>x.round===Number(mode)).map(x=>({role:x.role,value:x.bid}));$('demand-legend').textContent=mode==='values'?'Zahlungsbereitschaft':'Kaufgebote';$('supply-legend').textContent=mode==='values'?'Kosten':'Verkaufsangebote';drawChart(values,mode);}
 $('curve-select').addEventListener('change',renderChart);
-$('join-form').addEventListener('submit',async e=>{e.preventDefault();const c=$('join-code').value.trim().toUpperCase();if(!/^[A-Z2-9]{6}$/.test(c)){notice('Bitte einen gültigen sechsstelligen Sitzungscode eingeben.');return;}code=c;token=stored.players[c]||secret();const result=await action('join');if(result){stored.players[c]=token;stored.activePlayer=c;persist();render();}else{code='';token='';render();}});
-$('create-form').addEventListener('submit',async e=>{e.preventDefault();code='';token=secret();const result=await action('create',{duration:Number($('duration').value)});if(result){code=result.code;stored.admins[code]=token;stored.activeAdmin=code;persist();render();}else token='';});
+async function joinRoom(c){c=c.trim().toUpperCase();if(!/^[A-Z2-9]{6}$/.test(c)){notice('Bitte einen gültigen sechsstelligen Sitzungscode eingeben.');return;}code=c;token=stored.players[c]||secret();const result=await action('join');if(result){stored.players[c]=token;stored.activePlayer=c;persist();render();}else{code='';token='';render();}}
+$('join-form').addEventListener('submit',e=>{e.preventDefault();joinRoom($('join-code').value);});
+$('copy-link').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('room-link').href);$('copy-status').textContent='Link kopiert';}catch(_){$('copy-status').textContent='Link unten auswählen und kopieren';}});
+$('create-form').addEventListener('submit',async e=>{e.preventDefault();code='';token=secret();const result=await action('create',{instructorKey:stored.instructorKey});if(result){code=result.code;stored.admins[code]=token;stored.activeAdmin=code;persist();render();}else token='';});
 $('resume-form').addEventListener('submit',async e=>{e.preventDefault();const c=$('resume-code').value.trim().toUpperCase();if(!stored.admins[c]){notice('Für diesen Sitzungscode ist auf diesem Gerät kein Leitungszugang gespeichert.');return;}code=c;token=stored.admins[c];const result=await action('adminState');if(result){stored.activeAdmin=c;persist();render();}else{code='';token='';render();}});
 $('start-round').addEventListener('click',()=>action('start'));$('close-round').addEventListener('click',()=>action('close'));
 $('bid-form').addEventListener('submit',async e=>{e.preventDefault();const bid=Number($('bid').value);if(!Number.isInteger(bid)||bid<0||bid>500){notice('Bitte einen ganzen Betrag zwischen 0 und 500 eingeben.');return;}const wouldLose=state.me.role==='Kauf'?bid>state.me.value:bid<state.me.value;if(wouldLose&&!window.confirm('Dieses Gebot kann bei einem Abschluss zu einem Verlust führen. Möchtest du es trotzdem abgeben?'))return;await action('bid',{round:state.round,bid});});
 $('leave').addEventListener('click',()=>{if(!window.confirm('Sitzung auf diesem Gerät verlassen? Du kannst mit demselben Sitzungscode zurückkehren.'))return;if(isAdmin)stored.activeAdmin='';else stored.activePlayer='';persist();state=null;code='';token='';notice('');render();});
 $('new-session').addEventListener('click',()=>{stored.activeAdmin='';persist();code='';token='';state=null;render();});
 async function poll(){if(!code||!token||busy)return;try{const r=await api(isAdmin?'adminState':'playerState',{code,token});state=r;if(lastNotice)notice('');render();}catch(e){notice(e.message);}}
-setInterval(poll,10000+Math.floor(Math.random()*4000));setInterval(drawTimer,1000);render();if(code&&token)poll();
+setInterval(poll,10000+Math.floor(Math.random()*4000));if(!isAdmin&&room){code='';token='';render();joinRoom(room);}else{render();if(code&&token)poll();}
 })();
