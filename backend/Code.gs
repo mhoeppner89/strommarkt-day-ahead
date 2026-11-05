@@ -39,8 +39,8 @@ function requireToken(t){if(!/^[a-f0-9]{48}$/.test(String(t||'')))throw Error('U
 function requireCode(c){c=String(c||'').toUpperCase();if(!/^[A-Z2-9]{6}$/.test(c))throw Error('Ungültiger Sitzungscode.');return c;}
 function sessionFor(code){const s=rows('Sitzungen').find(x=>x.code===requireCode(code));if(!s)throw Error('Sitzung nicht gefunden.');return s;}
 function adminFor(s,token){if(requireToken(token)!==String(s.adminHash))throw Error('Leitungszugang ungültig.');}
-function playerFor(s,token){const h=requireToken(token),p=rows('Teilnehmende').find(x=>x.code===s.code&&x.playerHash===h);if(!p)throw Error('Bitte dieser Sitzung erneut beitreten.');return p;}
-function allPlayers(s){return rows('Teilnehmende').filter(x=>x.code===s.code);}
+function playerFor(s,token){const h=requireToken(token),p=rows('Teilnehmende').find(x=>x.code===s.code&&x.playerHash===h);if(!p||p.role==='ausgeschlossen')throw Error('Bitte dieser Sitzung erneut beitreten.');return p;}
+function allPlayers(s){return rows('Teilnehmende').filter(x=>x.code===s.code&&x.role!=='ausgeschlossen');}
 function newCode(){const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';for(let tries=0;tries<100;tries++){let x='';for(let i=0;i<6;i++)x+=alphabet[Math.floor(Math.random()*alphabet.length)];if(!rows('Sitzungen').some(s=>s.code===x))return x;}throw Error('Kein Sitzungscode verfügbar.');}
 function initializeRoles(s){
   const players=allPlayers(s);if(players.length<2)throw Error('Mindestens zwei Personen müssen beitreten.');
@@ -110,8 +110,12 @@ function dispatch(action,p,deferState){
   }
   let s=sessionFor(p.code);
   if(action==='join'){
-    const playerHash=requireToken(p.token),list=allPlayers(s);let player=list.find(x=>x.playerHash===playerHash);
-    if(!player){if(s.status!=='lobby')throw Error('Diese Sitzung hat bereits begonnen.');if(list.length>=60)throw Error('Diese Sitzung ist mit 60 Teilnehmenden voll.');player={code:s.code,playerHash:playerHash,number:list.length+1,role:'',value:'',joined:new Date().toISOString()};append('Teilnehmende',player);}
+    const playerHash=requireToken(p.token),list=allPlayers(s);let player=rows('Teilnehmende').find(x=>x.code===s.code&&x.playerHash===playerHash);
+    if(!player||player.role==='ausgeschlossen'){
+      if(s.status!=='lobby')throw Error('Diese Sitzung hat bereits begonnen.');if(list.length>=60)throw Error('Diese Sitzung ist mit 60 Teilnehmenden voll.');
+      if(player){player.role='';player.value='';update('Teilnehmende',player);}
+      else{player={code:s.code,playerHash:playerHash,number:rows('Teilnehmende').filter(x=>x.code===s.code).length+1,role:'',value:'',joined:new Date().toISOString()};append('Teilnehmende',player);}
+    }
     return respond(s,player);
   }
   if(action==='chooseRole'){
@@ -120,6 +124,12 @@ function dispatch(action,p,deferState){
     if(player.role===p.role)return respond(s,player);
     if(player.role)throw Error('Deine Rolle wurde bereits gewählt.');
     player.role=p.role;update('Teilnehmende',player);return respond(s,player);
+  }
+  if(action==='removeWaiting'){
+    adminFor(s,p.token);if(s.status!=='lobby')throw Error('Die Rollenwahl ist abgeschlossen.');
+    const sh=book().getSheetByName('Teilnehmende'),count=sh.getLastRow()-1,width=TABLES.Teilnehmende.length;
+    if(count>0){const values=sh.getRange(2,1,count,width).getValues();values.forEach(row=>{if(row[0]===s.code&&row[3]==='')row[3]='ausgeschlossen';});sh.getRange(2,1,count,width).setValues(values);delete tableCache.Teilnehmende;}
+    return respond(s,'admin');
   }
   if(action==='adminState'){adminFor(s,p.token);return respond(s,'admin');}
   if(action==='playerState'){return respond(s,playerFor(s,p.token));}
