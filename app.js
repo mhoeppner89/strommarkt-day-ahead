@@ -51,16 +51,16 @@ function render(){
  const s=state;$('session-code').textContent=s.code;visible('share',isAdmin&&s.status==='lobby');
  if(isAdmin){const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('raum',s.code);$('room-link').href=url.href;$('room-link').textContent=url.href;}
  $('round-caption').textContent=s.round?`Runde ${s.round} von 5`:'Markt';
- let title;if(s.status==='lobby')title=isAdmin?'Warten auf Teilnehmende':'Du bist dabei';
+ let title;if(s.status==='lobby')title=isAdmin?'Warten auf Teilnehmende':s.me&&s.me.role?(s.me.role==='Kauf'?'Du bist Käufer':'Du bist Verkäufer'):'Wähle deine Rolle';
  else if(s.status==='open')title=isAdmin?'Auktion läuft':'Dein Gebot für 1 MWh';
  else if(s.status==='review')title=`Runde ${s.round} ausgewertet`;
  else title='Spiel beendet';
- $('stage-title').textContent=title;
+ $('stage-title').textContent=title;visible('role-form',!isAdmin&&s.status==='lobby'&&Boolean(s.me&&!s.me.role));
  visible('admin-controls',isAdmin);visible('start-round',isAdmin&&(s.status==='lobby'||s.status==='review'));$('start-round').textContent=s.status==='lobby'?'Runde 1 starten':`Runde ${s.round+1} starten`;
- $('start-round').disabled=busy||(s.status==='lobby'&&s.players<2);visible('close-round',isAdmin&&s.status==='open');visible('new-session',isAdmin&&s.status==='finished');
- visible('admin-card',isAdmin);visible('private-card',!isAdmin&&Boolean(s.me&&s.me.role));
- if(isAdmin){$('player-count').textContent=s.players;$('bid-count').textContent=s.submitted;$('roles').textContent=s.roles&&s.roles.buyers?`${s.roles.buyers} Kauf · ${s.roles.sellers} Verkauf`:s.status==='lobby'?'Mindestens zwei Teilnehmende.':'';}
- else if(s.me&&s.me.role){const buying=s.me.role==='Kauf';$('role-label').textContent=buying?'Du kaufst Strom':'Du verkaufst Strom';$('value-label').textContent=buying?'Nutzen':'Kosten';$('private-value').textContent=s.me.value;$('private-explainer').textContent=buying?'Punkte = Nutzen − Preis':'Punkte = Preis − Kosten';const last=s.me.results.at(-1);$('score').textContent=last?last.cumulative:0;
+ $('start-round').disabled=busy||(s.status==='lobby'&&(s.players<2||!s.roles||s.roles.unselected>0));visible('close-round',isAdmin&&s.status==='open');visible('new-session',isAdmin&&s.status==='finished');
+ visible('admin-card',isAdmin);visible('private-card',!isAdmin&&Boolean(s.me&&s.me.role&&s.me.value!==null));
+ if(isAdmin){$('player-count').textContent=s.players;$('bid-count').textContent=s.submitted;$('roles').textContent=s.roles?`${s.roles.buyers} Käufer · ${s.roles.sellers} Verkäufer${s.roles.unselected?` · ${s.roles.unselected} offen`:''}`:'';}
+ else if(s.me&&s.me.role&&s.me.value!==null){const buying=s.me.role==='Kauf';$('role-label').textContent=buying?'Du kaufst Strom':'Du verkaufst Strom';$('value-label').textContent=buying?'Nutzen':'Kosten';$('private-value').textContent=s.me.value;$('private-explainer').textContent=buying?'Punkte = Nutzen − Preis':'Punkte = Preis − Kosten';const last=s.me.results.at(-1);$('score').textContent=last?last.cumulative:0;
  $('bid-label').textContent=buying?'Dein höchster Kaufpreis':'Dein niedrigster Verkaufspreis';$('bid-button').textContent=s.me.bid===null?'Gebot abgeben':'Gebot ändern';
  if(lastRound!==s.round){$('bid').value=s.me.bid===null?'':s.me.bid;lastRound=s.round;}else if(document.activeElement!==$('bid')&&s.me.bid!==null){$('bid').value=s.me.bid;}}
  visible('bid-form',!isAdmin&&s.status==='open'&&Boolean(s.me&&s.me.role));
@@ -74,6 +74,7 @@ $('join-form').addEventListener('submit',e=>{e.preventDefault();joinRoom($('join
 $('copy-link').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('room-link').href);$('copy-status').textContent='Link kopiert';}catch(_){$('copy-status').textContent='Link unten auswählen und kopieren';}});
 $('create-form').addEventListener('submit',async e=>{e.preventDefault();code='';token=secret();const result=await action('create',{instructorKey:stored.instructorKey});if(result){code=result.code;stored.admins[code]=token;stored.activeAdmin=code;persist();render();}else token='';});
 $('resume-form').addEventListener('submit',async e=>{e.preventDefault();const c=$('resume-code').value.trim().toUpperCase();if(!stored.admins[c]){notice('Für diesen Sitzungscode ist auf diesem Gerät kein Leitungszugang gespeichert.');return;}code=c;token=stored.admins[c];const result=await action('adminState');if(result){stored.activeAdmin=c;persist();render();}else{code='';token='';render();}});
+$('role-form').addEventListener('submit',async e=>{e.preventDefault();const choice=document.querySelector('input[name=role]:checked');if(choice)await action('chooseRole',{role:choice.value});});
 $('start-round').addEventListener('click',()=>action('start'));$('close-round').addEventListener('click',()=>action('close'));
 $('bid-form').addEventListener('submit',async e=>{e.preventDefault();const bid=Number($('bid').value);if(!Number.isInteger(bid)||bid<0||bid>500){notice('Bitte einen ganzen Betrag zwischen 0 und 500 eingeben.');return;}const wouldLose=state.me.role==='Kauf'?bid>state.me.value:bid<state.me.value;if(wouldLose&&!window.confirm('Dieses Gebot kann bei einem Abschluss zu einem Verlust führen. Möchtest du es trotzdem abgeben?'))return;await action('bid',{round:state.round,bid});});
 $('leave').addEventListener('click',()=>{if(!window.confirm('Sitzung auf diesem Gerät verlassen? Du kannst mit demselben Sitzungscode zurückkehren.'))return;if(isAdmin)stored.activeAdmin='';else stored.activePlayer='';persist();state=null;code='';token='';notice('');render();});
