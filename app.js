@@ -11,7 +11,7 @@ function notice(message){lastNotice=message||'';$('notice').textContent=lastNoti
 let serial=0;
 function api(action,payload){return new Promise((resolve,reject)=>{
  if(!endpoint){reject(new Error('Die Verbindung zum Spielserver ist noch nicht eingerichtet.'));return;}
- const callback=`strommarkt_${Date.now()}_${++serial}`,script=document.createElement('script'),url=new URL(endpoint),timer=setTimeout(()=>finish(false,'Der Spielserver antwortet nicht. Bitte erneut versuchen.'),20000);let done=false;
+ const callback=`strommarkt_${Date.now()}_${++serial}`,script=document.createElement('script'),url=new URL(endpoint),timer=setTimeout(()=>finish(false,'Der Spielserver antwortet nicht. Bitte erneut versuchen.'),40000);let done=false;
  function finish(ok,value){if(done)return;done=true;clearTimeout(timer);script.remove();delete window[callback];ok?resolve(value):reject(new Error(value||'Verbindung fehlgeschlagen.'));}
  window[callback]=r=>r&&r.ok?finish(true,r.data):finish(false,r&&r.error);
  url.searchParams.set('callback',callback);url.searchParams.set('action',action);url.searchParams.set('payload',JSON.stringify(payload));script.src=url.toString();script.onerror=()=>finish(false,'Der Spielserver ist nicht erreichbar.');document.head.append(script);
