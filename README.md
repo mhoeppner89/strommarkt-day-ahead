@@ -1,11 +1,11 @@
 # Der Strommarkt – Day-Ahead-Auktion
 
-Ein synchrones Lehrspiel für eine Lieferstunde und fünf Auktionsrunden. Eine Spielleitung startet jede Runde; Studierende handeln pseudonym, jeweils höchstens 1 MWh pro Runde. Kaufnutzen und Verkaufskosten sind privat, zufällig und bleiben innerhalb einer Sitzung gleich.
+Ein synchrones Lehrspiel für eine Lieferstunde und fünf Auktionsrunden. Eine Spielleitung startet jede Runde; Studierende handeln pseudonym, jeweils höchstens 1 MWh pro Runde. Kaufnutzen und Verkaufskosten werden zu Beginn zufällig festgelegt, sind privat und bleiben innerhalb einer Sitzung gleich.
 
 ## Ablauf
 
 1. Die Spielleitung öffnet ihren persönlichen Leitungslink, erstellt eine Sitzung und teilt den Raumlink.
-2. Studierende treten über den Raumlink bei. Mindestens zwei Personen sind nötig; Rollen werden zum Start möglichst gleichmäßig verteilt.
+2. Studierende treten über den Raumlink bei. Vor dem Start wählen alle einmalig ihre Rolle als Käufer oder Verkäufer. Die Spielleitung sieht die Anzahl der gewählten Rollen. Mindestens zwei Personen sind nötig; alle müssen ihre Rolle gewählt haben.
 3. Jede Person gibt je Runde ein verdecktes ganzzahliges Gebot in €/MWh ab und darf es bis zum Rundenschluss ändern.
 4. Die Spielleitung beendet jede Runde per Klick. Die nächste Runde wird von der Spielleitung gestartet.
 5. Nach fünf Runden zeigt das Spiel die Kurven aus privaten Werten und die Kurven der abgegebenen Gebote jeder Runde.
