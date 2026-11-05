@@ -4,13 +4,13 @@ Ein synchrones Lehrspiel für eine Lieferstunde und fünf Auktionsrunden. Eine S
 
 ## Ablauf
 
-1. Die Spielleitung öffnet `?leitung=1`, erstellt eine Sitzung und teilt den sechsstelligen Code.
-2. Studierende treten auf der Startseite bei. Mindestens zwei Personen sind nötig; Rollen werden zum Start möglichst gleichmäßig verteilt.
+1. Die Spielleitung öffnet ihren persönlichen Leitungslink, erstellt eine Sitzung und teilt den Raumlink.
+2. Studierende treten über den Raumlink bei. Mindestens zwei Personen sind nötig; Rollen werden zum Start möglichst gleichmäßig verteilt.
 3. Jede Person gibt je Runde ein verdecktes ganzzahliges Gebot in €/MWh ab und darf es bis zum Rundenschluss ändern.
-4. Die Runde endet nach Ablauf der Zeit oder durch die Spielleitung. Die nächste Runde wird von der Spielleitung gestartet.
+4. Die Spielleitung beendet jede Runde per Klick. Die nächste Runde wird von der Spielleitung gestartet.
 5. Nach fünf Runden zeigt das Spiel die Kurven aus privaten Werten und die Kurven der abgegebenen Gebote jeder Runde.
 
-Der Browser speichert einen zufälligen Zugangsschlüssel zur Wiederaufnahme auf demselben Gerät. Die Spielleitung kann über „Eine frühere Sitzung fortsetzen“ eine dort erstellte Sitzung wieder öffnen. Studierende können einen begonnenen Markt nur mit ihrem bereits gespeicherten Schlüssel wieder betreten. Browserdaten nicht während der Sitzung löschen.
+Der Browser speichert einen zufälligen Zugangsschlüssel zur Wiederaufnahme auf demselben Gerät. Die Spielleitung kann über „Sitzung fortsetzen“ eine dort erstellte Sitzung wieder öffnen. Studierende können einen begonnenen Markt nur mit ihrem bereits gespeicherten Schlüssel wieder betreten. Browserdaten nicht während der Sitzung löschen.
 
 ## Auktion
 
@@ -24,7 +24,7 @@ Das statische Frontend braucht ein eigenes, an eine Google-Tabelle gebundenes Ap
 
 1. Eine neue Google-Tabelle erstellen, **Erweiterungen → Apps Script** öffnen und `backend/Code.gs` in `Code.gs` einfügen.
 2. In den Projekteinstellungen die Manifestdatei einblenden und `backend/appsscript.json` als `appsscript.json` übernehmen. Google verlangt für die Web-App den Google-Tabellen-Zugriff `spreadsheets`: Diese Berechtigung erlaubt dem Script-Konto technisch den Zugriff auf alle seine Google-Tabellen. Der Code öffnet ausschließlich die unter `SPREADSHEET_ID` eingetragene Tabelle.
-3. In den Projekteinstellungen unter **Skripteigenschaften** den Schlüssel `SPREADSHEET_ID` mit der ID der neu erstellten Tabelle eintragen.
+3. In den Projekteinstellungen unter **Skripteigenschaften** `SPREADSHEET_ID` mit der ID der neuen Tabelle und `INSTRUCTOR_KEY_HASH` mit dem SHA-256-Hash eines zufälligen 48-stelligen Hexadezimal-Schlüssels eintragen. Der persönliche Leitungslink lautet `?leitung=1#key=SCHLÜSSEL`; der Schlüssel darf nicht veröffentlicht werden. Wer ihn kennt, kann Sitzungen erstellen.
 4. Als Web-App bereitstellen: **Ausführen als: ich**; **Zugriff: alle, auch ohne Anmeldung**. Der Lehrende muss die von Google angezeigten Rechte ausdrücklich autorisieren. Das Spiel braucht diese Freigabe, damit Studierende ohne Google-Anmeldung Gebote senden können. Die Tabelle selbst bleibt privat.
 5. Die erzeugte `/exec`-URL in `config.js` als `window.STROMMARKT_ENDPOINT` eintragen und das Frontend auf einem öffentlich erreichbaren HTTPS-Host bereitstellen, z. B. über GitHub Pages.
 
@@ -41,4 +41,4 @@ node test/auction.cjs
 node test/server.cjs
 ```
 
-Danach `http://127.0.0.1:4187/?leitung=1` öffnen. In der Praxis müssen Spielleitung und Teilnehmende verschiedene Browserprofile bzw. Geräte verwenden, damit sie unterschiedliche Teilnehmer-Schlüssel erhalten. Die Tests prüfen unter anderem Preisintervall, Losreihung, Privatsphäre der Werte und den Ablauf über fünf Runden.
+Danach `http://127.0.0.1:4187/?leitung=1#key=ffffffffffffffffffffffffffffffffffffffffffffffff` öffnen (lokaler Testschlüssel). In der Praxis müssen Spielleitung und Teilnehmende verschiedene Browserprofile bzw. Geräte verwenden, damit sie unterschiedliche Teilnehmer-Schlüssel erhalten. Die Tests prüfen unter anderem Preisintervall, Losreihung, Privatsphäre der Werte und den Ablauf über fünf Runden.
