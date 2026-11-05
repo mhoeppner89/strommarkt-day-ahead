@@ -5,24 +5,33 @@ let stored;try{stored={...fresh(),...JSON.parse(localStorage.getItem(STORAGE)||'
 const fragment=new URLSearchParams(location.hash.slice(1)),incomingKey=fragment.get('key')||'';
 if(isAdmin&&/^[a-f0-9]{48}$/.test(incomingKey)){stored.instructorKey=incomingKey;localStorage.setItem(STORAGE,JSON.stringify(stored));}
 const room=(query.get('raum')||'').toUpperCase();
-let code=isAdmin?stored.activeAdmin:stored.activePlayer,token=code?(isAdmin?stored.admins[code]:stored.players[code]):'',state=null,busy=false,lastNotice='',lastRound=null;
+let code=isAdmin?stored.activeAdmin:stored.activePlayer,token=code?(isAdmin?stored.admins[code]:stored.players[code]):'',state=null,busy=false,polling=false,actionEpoch=0,lastNotice='',lastRound=null;
 const persist=()=>localStorage.setItem(STORAGE,JSON.stringify(stored));
 const secret=()=>Array.from(crypto.getRandomValues(new Uint8Array(24)),x=>x.toString(16).padStart(2,'0')).join('');
 const visible=(id,yes)=>$(id).classList.toggle('hidden',!yes);
 const money=x=>x===null||x===undefined?'–':`${x} €/MWh`;
 function notice(message){lastNotice=message||'';$('notice').textContent=lastNotice;visible('notice',Boolean(lastNotice));}
 let serial=0;
-function api(action,payload){return new Promise((resolve,reject)=>{
+function request(action,payload){return new Promise((resolve,reject)=>{
  if(!endpoint){reject(new Error('Die Verbindung zum Spielserver ist noch nicht eingerichtet.'));return;}
  const callback=`strommarkt_${Date.now()}_${++serial}`,script=document.createElement('script'),url=new URL(endpoint),timer=setTimeout(()=>finish(false,'Der Spielserver antwortet nicht. Bitte erneut versuchen.'),40000);let done=false;
  function finish(ok,value){if(done)return;done=true;clearTimeout(timer);script.remove();delete window[callback];ok?resolve(value):reject(new Error(value||'Verbindung fehlgeschlagen.'));}
  window[callback]=r=>r&&r.ok?finish(true,r.data):finish(false,r&&r.error);
  url.searchParams.set('callback',callback);url.searchParams.set('action',action);url.searchParams.set('payload',JSON.stringify(payload));script.src=url.toString();script.onerror=()=>finish(false,'Der Spielserver ist nicht erreichbar.');document.head.append(script);
 });}
+async function api(action,payload){
+ for(let attempt=0;attempt<10;attempt++){
+  try{return await request(action,payload);}catch(e){
+   if(e.message!=='SERVER_BELEGT'||attempt===9)throw e;
+   if(action!=='adminState'&&action!=='playerState')notice('Viele Anfragen gleichzeitig. Bitte warten …');
+   await new Promise(resolve=>setTimeout(resolve,1000+Math.floor(Math.random()*4000)));
+  }
+ }
+}
 async function action(name,extra={}){
- if(busy)return null;busy=true;document.querySelectorAll('button[type=submit],#start-round,#close-round').forEach(b=>b.disabled=true);
+ if(busy)return null;busy=true;actionEpoch++;document.querySelectorAll('button[type=submit],#start-round,#close-round').forEach(b=>b.disabled=true);
  try{const result=await api(name,{code,token,...extra});state=result;notice('');render();return result;}
- catch(e){notice(e.message);return null;}
+ catch(e){notice(e.message==='SERVER_BELEGT'?'Der Server ist ausgelastet. Bitte erneut versuchen.':e.message);return null;}
  finally{busy=false;document.querySelectorAll('button[type=submit],#start-round,#close-round').forEach(b=>b.disabled=false);if(state)render();}
 }
 function el(tag,cls,text){const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=text;return x;}
@@ -79,6 +88,6 @@ $('start-round').addEventListener('click',()=>action('start'));$('close-round').
 $('bid-form').addEventListener('submit',async e=>{e.preventDefault();const bid=Number($('bid').value);if(!Number.isInteger(bid)||bid<0||bid>500){notice('Bitte einen ganzen Betrag zwischen 0 und 500 eingeben.');return;}const wouldLose=state.me.role==='Kauf'?bid>state.me.value:bid<state.me.value;if(wouldLose&&!window.confirm('Dieses Gebot kann bei einem Abschluss zu einem Verlust führen. Möchtest du es trotzdem abgeben?'))return;await action('bid',{round:state.round,bid});});
 $('leave').addEventListener('click',()=>{if(!window.confirm('Sitzung auf diesem Gerät verlassen? Du kannst mit demselben Sitzungscode zurückkehren.'))return;if(isAdmin)stored.activeAdmin='';else stored.activePlayer='';persist();state=null;code='';token='';notice('');render();});
 $('new-session').addEventListener('click',()=>{stored.activeAdmin='';persist();code='';token='';state=null;render();});
-async function poll(){if(!code||!token||busy)return;try{const r=await api(isAdmin?'adminState':'playerState',{code,token});state=r;if(lastNotice)notice('');render();}catch(e){notice(e.message);}}
-setInterval(poll,10000+Math.floor(Math.random()*4000));if(!isAdmin&&room){code='';token='';render();joinRoom(room);}else{render();if(code&&token)poll();}
+async function poll(){if(!code||!token||busy||polling)return;polling=true;const epoch=actionEpoch;try{const r=await api(isAdmin?'adminState':'playerState',{code,token});if(epoch===actionEpoch){state=r;if(lastNotice)notice('');render();}}catch(e){if(epoch===actionEpoch)notice(e.message);}finally{polling=false;}}
+setInterval(poll,15000+Math.floor(Math.random()*6000));if(!isAdmin&&room){code='';token='';render();joinRoom(room);}else{render();if(code&&token)poll();}
 })();
