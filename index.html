@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <title>Strommarkt</title>
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
   <script src="config.js" defer></script>
-  <script src="app.js?v=3" defer></script>
+  <script src="app.js?v=4" defer></script>
 </head>
 <body>
-<header class="masthead"><h1>Strommarkt</h1><a id="mode-link" href="?leitung=1">Spielleitung</a></header>
+<header class="masthead"><h1>Strommarkt</h1></header>
 <main>
 <div id="notice" class="notice hidden" role="alert"></div>
 <section id="join" class="panel start hidden">
@@ -22,14 +22,11 @@
 </section>
 <section id="admin-create" class="panel start hidden">
   <h2>Neue Sitzung</h2>
-  <form id="create-form" class="inline-form">
-    <label for="duration">Dauer pro Runde</label>
-    <div class="input-row"><select id="duration"><option value="60">1 Minute</option><option value="120" selected>2 Minuten</option><option value="180">3 Minuten</option><option value="300">5 Minuten</option></select><button type="submit" class="button primary">Sitzung erstellen</button></div>
-  </form>
+  <form id="create-form" class="inline-form"><button type="submit" class="button primary">Sitzung erstellen</button></form>
   <details><summary>Sitzung fortsetzen</summary><form id="resume-form" class="inline-form"><label for="resume-code">Sitzungscode</label><div class="input-row"><input id="resume-code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" required><button class="button secondary" type="submit">Fortsetzen</button></div><p class="hint">Nur auf dem Gerät, auf dem die Sitzung erstellt wurde.</p></form></details>
 </section>
 <section id="game" class="hidden">
-  <div class="session-line"><div><span class="small-label">Sitzung</span><strong id="session-code" class="code"></strong></div><button id="leave" class="text-button">Verlassen</button></div>
+  <div class="session-line"><div><span class="small-label">Sitzung</span><strong id="session-code" class="code"></strong></div><button id="leave" class="text-button">Verlassen</button></div><div id="share" class="share hidden"><button id="copy-link" class="button secondary" type="button">Raumlink kopieren</button><span id="copy-status" class="hint" role="status"></span><a id="room-link" class="room-link" href=""></a></div>
   <div class="market-grid">
     <aside class="sidebar">
       <section id="private-card" class="private hidden">
@@ -41,7 +38,7 @@
     </aside>
     <div class="primary-column">
       <section class="stage">
-        <div class="stage-top"><span id="round-caption" class="section-label">Markt</span><div id="clock" class="clock hidden"><span>Verbleibend</span><strong id="timer">–</strong></div></div>
+        <div class="stage-top"><span id="round-caption" class="section-label">Markt</span></div>
         <h2 id="stage-title"></h2>
         <form id="bid-form" class="bid-form hidden"><label for="bid" id="bid-label"></label><div class="bid-control"><div class="price-input"><input id="bid" type="number" min="0" max="500" step="1" inputmode="numeric" required><span>€/MWh</span></div><button id="bid-button" class="button primary" type="submit">Gebot abgeben</button></div><p class="hint">0–500 €/MWh · bis Rundenschluss änderbar</p></form>
         <div id="result" class="round-result hidden"></div>
