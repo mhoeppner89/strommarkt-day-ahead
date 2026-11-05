@@ -5,7 +5,7 @@ let stored;try{stored={...fresh(),...JSON.parse(localStorage.getItem(STORAGE)||'
 const fragment=new URLSearchParams(location.hash.slice(1)),incomingKey=fragment.get('key')||'';
 if(isAdmin&&/^[a-f0-9]{48}$/.test(incomingKey)){stored.instructorKey=incomingKey;localStorage.setItem(STORAGE,JSON.stringify(stored));}
 const room=(query.get('raum')||'').toUpperCase();
-let code=isAdmin?stored.activeAdmin:stored.activePlayer,token=code?(isAdmin?stored.admins[code]:stored.players[code]):'',state=null,busy=false,polling=false,actionEpoch=0,lastNotice='',lastRound=null;
+let code=isAdmin?stored.activeAdmin:stored.activePlayer,token=code?(isAdmin?stored.admins[code]:stored.players[code]):'',state=null,busy=false,polling=false,pollFailures=0,actionEpoch=0,lastNotice='',lastRound=null;
 const persist=()=>localStorage.setItem(STORAGE,JSON.stringify(stored));
 const secret=()=>Array.from(crypto.getRandomValues(new Uint8Array(24)),x=>x.toString(16).padStart(2,'0')).join('');
 const visible=(id,yes)=>$(id).classList.toggle('hidden',!yes);
@@ -22,17 +22,17 @@ function request(action,payload){return new Promise((resolve,reject)=>{
 async function api(action,payload){
  for(let attempt=0;attempt<10;attempt++){
   try{return await request(action,payload);}catch(e){
-   if(!['SERVER_BELEGT','Der Spielserver antwortet nicht. Bitte erneut versuchen.'].includes(e.message)||attempt===9)throw e;
+   if(action==='removeWaiting'||!['SERVER_BELEGT','Der Spielserver antwortet nicht. Bitte erneut versuchen.','Der Spielserver ist nicht erreichbar.'].includes(e.message)||attempt===9)throw e;
    if(action!=='adminState'&&action!=='playerState')notice('Viele Anfragen gleichzeitig. Bitte warten …');
    await new Promise(resolve=>setTimeout(resolve,1000+Math.floor(Math.random()*4000)));
   }
  }
 }
 async function action(name,extra={}){
- if(busy)return null;busy=true;actionEpoch++;const pending=setTimeout(()=>visible('working',true),1500);document.querySelectorAll('button[type=submit],#start-round,#close-round').forEach(b=>b.disabled=true);
+ if(busy)return null;busy=true;actionEpoch++;const pending=setTimeout(()=>visible('working',true),1500);document.querySelectorAll('button[type=submit],#start-round,#close-round,#remove-waiting').forEach(b=>b.disabled=true);
  try{const result=await api(name,{code,token,...extra});state=result;notice('');render();return result;}
  catch(e){notice(e.message==='SERVER_BELEGT'?'Der Server ist ausgelastet. Bitte erneut versuchen.':e.message);return null;}
- finally{clearTimeout(pending);visible('working',false);busy=false;document.querySelectorAll('button[type=submit],#start-round,#close-round').forEach(b=>b.disabled=false);if(state)render();}
+ finally{clearTimeout(pending);visible('working',false);busy=false;document.querySelectorAll('button[type=submit],#start-round,#close-round,#remove-waiting').forEach(b=>b.disabled=false);if(state)render();}
 }
 function el(tag,cls,text){const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=text;return x;}
 function addRow(parent,cells){const tr=el('tr');cells.forEach(v=>tr.appendChild(el('td','',String(v))));parent.appendChild(tr);}
@@ -68,6 +68,7 @@ function render(){
  visible('admin-controls',isAdmin);visible('start-round',isAdmin&&(s.status==='lobby'||s.status==='review'));$('start-round').textContent=s.status==='lobby'?'Runde 1 starten':`Runde ${s.round+1} starten`;
  $('start-round').disabled=busy||(s.status==='lobby'&&(s.players<2||!s.roles||s.roles.unselected>0));visible('close-round',isAdmin&&s.status==='open');visible('new-session',isAdmin&&s.status==='finished');
  visible('admin-card',isAdmin);visible('private-card',!isAdmin&&Boolean(s.me&&s.me.role&&s.me.value!==null));
+ visible('remove-waiting',isAdmin&&s.status==='lobby'&&Boolean(s.roles&&s.roles.unselected));
  if(isAdmin){$('player-count').textContent=s.players;$('bid-count').textContent=s.submitted;$('roles').textContent=s.roles?`${s.roles.buyers} Käufer · ${s.roles.sellers} Verkäufer${s.roles.unselected?` · ${s.roles.unselected} offen`:''}`:'';}
  else if(s.me&&s.me.role&&s.me.value!==null){const buying=s.me.role==='Kauf';$('role-label').textContent=buying?'Du kaufst Strom':'Du verkaufst Strom';$('value-label').textContent=buying?'Nutzen':'Kosten';$('private-value').textContent=s.me.value;$('private-explainer').textContent=buying?'Punkte = Nutzen − Preis':'Punkte = Preis − Kosten';const last=s.me.results.at(-1);$('score').textContent=last?last.cumulative:0;
  $('bid-label').textContent=buying?'Dein höchster Kaufpreis':'Dein niedrigster Verkaufspreis';$('bid-button').textContent=s.me.bid===null?'Gebot abgeben':'Gebot ändern';
@@ -78,16 +79,17 @@ function render(){
 }
 function renderChart(){if(!state||!state.reveal)return;const mode=$('curve-select').value;const values=mode==='values'?state.reveal:(state.bids||[]).filter(x=>x.round===Number(mode)).map(x=>({role:x.role,value:x.bid}));$('demand-legend').textContent=mode==='values'?'Zahlungsbereitschaft':'Kaufgebote';$('supply-legend').textContent=mode==='values'?'Kosten':'Verkaufsangebote';drawChart(values,mode);}
 $('curve-select').addEventListener('change',renderChart);
-async function joinRoom(c){c=c.trim().toUpperCase();if(!/^[A-Z2-9]{6}$/.test(c)){notice('Bitte einen gültigen sechsstelligen Sitzungscode eingeben.');return;}code=c;token=stored.players[c]||secret();const result=await action('join');if(result){stored.players[c]=token;stored.activePlayer=c;persist();render();}else{code='';token='';render();}}
+async function joinRoom(c){c=c.trim().toUpperCase();if(!/^[A-Z2-9]{6}$/.test(c)){notice('Bitte einen gültigen sechsstelligen Sitzungscode eingeben.');return;}code=c;token=stored.players[c]||secret();stored.players[c]=token;persist();const result=await action('join');if(result){stored.players[c]=token;stored.activePlayer=c;persist();render();}else{code='';token='';render();}}
 $('join-form').addEventListener('submit',e=>{e.preventDefault();joinRoom($('join-code').value);});
 $('copy-link').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('room-link').href);$('copy-status').textContent='Link kopiert';}catch(_){$('copy-status').textContent='Link unten auswählen und kopieren';}});
 $('create-form').addEventListener('submit',async e=>{e.preventDefault();code='';token=secret();const result=await action('create',{instructorKey:stored.instructorKey});if(result){code=result.code;stored.admins[code]=token;stored.activeAdmin=code;persist();render();}else token='';});
 $('resume-form').addEventListener('submit',async e=>{e.preventDefault();const c=$('resume-code').value.trim().toUpperCase();if(!stored.admins[c]){notice('Für diesen Sitzungscode ist auf diesem Gerät kein Leitungszugang gespeichert.');return;}code=c;token=stored.admins[c];const result=await action('adminState');if(result){stored.activeAdmin=c;persist();render();}else{code='';token='';render();}});
+$('remove-waiting').addEventListener('click',()=>{if(window.confirm('Alle Teilnehmenden ohne Rollenwahl entfernen?'))action('removeWaiting');});
 $('role-form').addEventListener('submit',async e=>{e.preventDefault();const choice=document.querySelector('input[name=role]:checked');if(choice)await action('chooseRole',{role:choice.value});});
 $('start-round').addEventListener('click',()=>action('start',{previousRound:state.round}));$('close-round').addEventListener('click',()=>action('close',{round:state.round}));
 $('bid-form').addEventListener('submit',async e=>{e.preventDefault();const bid=Number($('bid').value);if(!Number.isInteger(bid)||bid<0||bid>500){notice('Bitte einen ganzen Betrag zwischen 0 und 500 eingeben.');return;}const wouldLose=state.me.role==='Kauf'?bid>state.me.value:bid<state.me.value;if(wouldLose&&!window.confirm('Dieses Gebot kann bei einem Abschluss zu einem Verlust führen. Möchtest du es trotzdem abgeben?'))return;await action('bid',{round:state.round,bid});});
 $('leave').addEventListener('click',()=>{if(!window.confirm('Sitzung auf diesem Gerät verlassen? Du kannst mit demselben Sitzungscode zurückkehren.'))return;if(isAdmin)stored.activeAdmin='';else stored.activePlayer='';persist();state=null;code='';token='';notice('');render();});
 $('new-session').addEventListener('click',()=>{stored.activeAdmin='';persist();code='';token='';state=null;render();});
-async function poll(){if(!code||!token||busy||polling)return;polling=true;const epoch=actionEpoch;try{const r=await api(isAdmin?'adminState':'playerState',{code,token});if(epoch===actionEpoch){state=r;if(lastNotice)notice('');render();}}catch(e){if(epoch===actionEpoch)notice(e.message);}finally{polling=false;}}
+async function poll(){if(!code||!token||busy||polling)return;polling=true;const epoch=actionEpoch;try{const r=await api(isAdmin?'adminState':'playerState',{code,token});if(epoch===actionEpoch){pollFailures=0;state=r;if(lastNotice)notice('');render();}}catch(e){if(epoch===actionEpoch&&++pollFailures>=3)notice('Verbindung unterbrochen. Es wird weiter versucht.');}finally{polling=false;}}
 setInterval(poll,15000+Math.floor(Math.random()*6000));if(!isAdmin&&room){code='';token='';render();joinRoom(room);}else{render();if(code&&token)poll();}
 })();
