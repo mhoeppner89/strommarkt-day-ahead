@@ -84,13 +84,13 @@ function closeRound(s){
   s.status=Number(s.round)>=5?'finished':'review';s.deadline='';update('Sitzungen',s);
 }
 function state(s,viewer){
-  const players=allPlayers(s),summary=rows('Runden').filter(x=>x.code===s.code).map(x=>({round:Number(x.round),price:x.price===''?null:Number(x.price),quantity:Number(x.quantity),submitted:Number(x.submitted)}));
+  const players=allPlayers(s),summary=s.status==='lobby'?[]:rows('Runden').filter(x=>x.code===s.code).map(x=>({round:Number(x.round),price:x.price===''?null:Number(x.price),quantity:Number(x.quantity),submitted:Number(x.submitted)}));
   const base={code:s.code,status:s.status,round:Number(s.round),deadline:s.deadline?Number(s.deadline):null,duration:Number(s.duration),players:players.length,submitted:s.status==='open'?ordersFor(s).length:0,history:summary};
   if(viewer==='admin'){
     base.roles={buyers:players.filter(p=>p.role==='Kauf').length,sellers:players.filter(p=>p.role==='Verkauf').length,unselected:players.filter(p=>p.role!=='Kauf'&&p.role!=='Verkauf').length};
   }else{
     const p=viewer, order=s.status==='open'?ordersFor(s).find(x=>x.playerHash===p.playerHash):null;
-    const mine=rows('Ergebnisse').filter(x=>x.code===s.code&&x.playerHash===p.playerHash).sort((a,b)=>Number(a.round)-Number(b.round));
+    const mine=s.status==='lobby'||(s.status==='open'&&Number(s.round)===1)?[]:rows('Ergebnisse').filter(x=>x.code===s.code&&x.playerHash===p.playerHash).sort((a,b)=>Number(a.round)-Number(b.round));
     base.me={number:p.number,role:p.role||null,value:p.value===''?null:Number(p.value),bid:order?Number(order.bid):null,results:mine.map(x=>({round:Number(x.round),bid:x.bid===''?null:Number(x.bid),matched:x.matched==='ja',price:x.price===''?null:Number(x.price),points:Number(x.points),cumulative:Number(x.cumulative)}))};
   }
   if(s.status==='finished'){
@@ -99,34 +99,35 @@ function state(s,viewer){
   }
   return base;
 }
-function dispatch(action,p){
+function dispatch(action,p,deferState){
+  const respond=(s,viewer)=>deferState?{session:s,viewer:viewer}:state(s,viewer);
   if(action==='create'){
     const instructorHash=PropertiesService.getScriptProperties().getProperty('INSTRUCTOR_KEY_HASH');
     if(!instructorHash||requireToken(p.instructorKey)!==instructorHash)throw Error('Leitungszugang ungültig.');
     const adminHash=requireToken(p.token),duration=0;
-    const s={code:newCode(),adminHash:adminHash,status:'lobby',round:0,deadline:'',duration:duration,created:new Date().toISOString()};append('Sitzungen',s);return state(s,'admin');
+    const s={code:newCode(),adminHash:adminHash,status:'lobby',round:0,deadline:'',duration:duration,created:new Date().toISOString()};append('Sitzungen',s);return respond(s,'admin');
   }
   let s=sessionFor(p.code);
   if(action==='join'){
     const playerHash=requireToken(p.token),list=allPlayers(s);let player=list.find(x=>x.playerHash===playerHash);
     if(!player){if(s.status!=='lobby')throw Error('Diese Sitzung hat bereits begonnen.');if(list.length>=60)throw Error('Diese Sitzung ist mit 60 Teilnehmenden voll.');player={code:s.code,playerHash:playerHash,number:list.length+1,role:'',value:'',joined:new Date().toISOString()};append('Teilnehmende',player);}
-    return state(s,player);
+    return respond(s,player);
   }
   if(action==='chooseRole'){
     const player=playerFor(s,p.token);if(s.status!=='lobby')throw Error('Die Rollenwahl ist abgeschlossen.');
     if(p.role!=='Kauf'&&p.role!=='Verkauf')throw Error('Bitte eine Rolle wählen.');
     if(player.role)throw Error('Deine Rolle wurde bereits gewählt.');
-    player.role=p.role;update('Teilnehmende',player);return state(s,player);
+    player.role=p.role;update('Teilnehmende',player);return respond(s,player);
   }
-  if(action==='adminState'){adminFor(s,p.token);return state(s,'admin');}
-  if(action==='playerState'){return state(s,playerFor(s,p.token));}
+  if(action==='adminState'){adminFor(s,p.token);return respond(s,'admin');}
+  if(action==='playerState'){return respond(s,playerFor(s,p.token));}
   if(action==='start'){
     adminFor(s,p.token);if(s.status==='lobby'){initializeRoles(s);s.round=1;}
     else if(s.status==='review'&&Number(s.round)<5)s.round=Number(s.round)+1;
     else throw Error('Die nächste Runde kann noch nicht gestartet werden.');
-    s.status='open';s.deadline='';update('Sitzungen',s);return state(s,'admin');
+    s.status='open';s.deadline='';update('Sitzungen',s);return respond(s,'admin');
   }
-  if(action==='close'){adminFor(s,p.token);if(s.status!=='open')throw Error('Es läuft gerade keine Runde.');closeRound(s);return state(s,'admin');}
+  if(action==='close'){adminFor(s,p.token);if(s.status!=='open')throw Error('Es läuft gerade keine Runde.');closeRound(s);return respond(s,'admin');}
   if(action==='bid'){
     const player=playerFor(s,p.token);if(s.status!=='open')throw Error('Die Gebotsrunde ist geschlossen.');
     if(Number(p.round)!==Number(s.round))throw Error('Die Runde hat sich geändert.');
@@ -134,7 +135,7 @@ function dispatch(action,p){
     let order=ordersFor(s).find(o=>o.playerHash===player.playerHash);
     if(order){order.bid=bid;order.submitted=new Date().toISOString();update('Gebote',order);}
     else append('Gebote',{code:s.code,round:s.round,playerHash:player.playerHash,role:player.role,bid:bid,submitted:new Date().toISOString(),tie:hash(s.code+'|'+s.round+'|'+player.playerHash)});
-    return state(s,player);
+    return respond(s,player);
   }
   throw Error('Unbekannte Aktion.');
 }
@@ -147,10 +148,14 @@ function doGet(e){
     let p={};try{p=JSON.parse(args.payload||'{}');}catch(_){throw Error('Ungültige Anfrage.');}
     const action=String(args.action||''),readOnly=action==='adminState'||action==='playerState';
     if(!readOnly){
-      lock.waitLock(20000);locked=true;resetCache();
+      try{lock.waitLock(20000);}catch(_){throw Error('SERVER_BELEGT');}locked=true;resetCache();
       if(action==='create')ensureTables();
     }
-    response={ok:true,data:dispatch(action,p)};
+    const result=dispatch(action,p,!readOnly);
+    if(locked){flushAndRelease(lock);locked=false;resetCache();}
+    if(readOnly)response={ok:true,data:result};
+    else {const s=sessionFor(result.session.code),viewer=result.viewer==='admin'?'admin':playerFor(s,p.token);response={ok:true,data:state(s,viewer)};}
+
   }catch(err){response={ok:false,error:String(err.message||err)};}
   finally{if(locked)try{flushAndRelease(lock);}catch(_){}}
   const json=JSON.stringify(response).replace(/</g,'\\u003c');
