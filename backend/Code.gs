@@ -42,12 +42,12 @@ function adminFor(s,token){if(requireToken(token)!==String(s.adminHash))throw Er
 function playerFor(s,token){const h=requireToken(token),p=rows('Teilnehmende').find(x=>x.code===s.code&&x.playerHash===h);if(!p)throw Error('Bitte dieser Sitzung erneut beitreten.');return p;}
 function allPlayers(s){return rows('Teilnehmende').filter(x=>x.code===s.code);}
 function newCode(){const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';for(let tries=0;tries<100;tries++){let x='';for(let i=0;i<6;i++)x+=alphabet[Math.floor(Math.random()*alphabet.length)];if(!rows('Sitzungen').some(s=>s.code===x))return x;}throw Error('Kein Sitzungscode verfügbar.');}
-function shuffled(xs){xs=xs.slice();for(let i=xs.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[xs[i],xs[j]]=[xs[j],xs[i]];}return xs;}
 function initializeRoles(s){
-  const players=shuffled(allPlayers(s));if(players.length<2)throw Error('Mindestens zwei Personen müssen beitreten.');
-  const assigned={};players.forEach((p,i)=>{const role=i%2===0?'Kauf':'Verkauf';assigned[p.playerHash]={role,value:role==='Kauf'?95+Math.floor(Math.random()*61):45+Math.floor(Math.random()*61)};});
+  const players=allPlayers(s);if(players.length<2)throw Error('Mindestens zwei Personen müssen beitreten.');
+  if(players.some(p=>p.role!=='Kauf'&&p.role!=='Verkauf'))throw Error('Alle Teilnehmenden müssen zuerst ihre Rolle wählen.');
+  const assigned={};players.forEach(p=>{assigned[p.playerHash]=p.role==='Kauf'?95+Math.floor(Math.random()*61):45+Math.floor(Math.random()*61);});
   const sh=book().getSheetByName('Teilnehmende'),count=sh.getLastRow()-1,width=TABLES.Teilnehmende.length;
-  const values=sh.getRange(2,1,count,width).getValues();values.forEach(row=>{if(row[0]===s.code&&assigned[row[1]]){row[3]=assigned[row[1]].role;row[4]=assigned[row[1]].value;}});
+  const values=sh.getRange(2,1,count,width).getValues();values.forEach(row=>{if(row[0]===s.code&&Object.prototype.hasOwnProperty.call(assigned,row[1]))row[4]=assigned[row[1]];});
   sh.getRange(2,1,count,width).setValues(values);delete tableCache.Teilnehmende;
 }
 function ordersFor(s){return rows('Gebote').filter(o=>o.code===s.code&&Number(o.round)===Number(s.round));}
@@ -87,7 +87,7 @@ function state(s,viewer){
   const players=allPlayers(s),summary=rows('Runden').filter(x=>x.code===s.code).map(x=>({round:Number(x.round),price:x.price===''?null:Number(x.price),quantity:Number(x.quantity),submitted:Number(x.submitted)}));
   const base={code:s.code,status:s.status,round:Number(s.round),deadline:s.deadline?Number(s.deadline):null,duration:Number(s.duration),players:players.length,submitted:s.status==='open'?ordersFor(s).length:0,history:summary};
   if(viewer==='admin'){
-    base.roles={buyers:players.filter(p=>p.role==='Kauf').length,sellers:players.filter(p=>p.role==='Verkauf').length};
+    base.roles={buyers:players.filter(p=>p.role==='Kauf').length,sellers:players.filter(p=>p.role==='Verkauf').length,unselected:players.filter(p=>p.role!=='Kauf'&&p.role!=='Verkauf').length};
   }else{
     const p=viewer, order=s.status==='open'?ordersFor(s).find(x=>x.playerHash===p.playerHash):null;
     const mine=rows('Ergebnisse').filter(x=>x.code===s.code&&x.playerHash===p.playerHash).sort((a,b)=>Number(a.round)-Number(b.round));
@@ -111,6 +111,12 @@ function dispatch(action,p){
     const playerHash=requireToken(p.token),list=allPlayers(s);let player=list.find(x=>x.playerHash===playerHash);
     if(!player){if(s.status!=='lobby')throw Error('Diese Sitzung hat bereits begonnen.');if(list.length>=60)throw Error('Diese Sitzung ist mit 60 Teilnehmenden voll.');player={code:s.code,playerHash:playerHash,number:list.length+1,role:'',value:'',joined:new Date().toISOString()};append('Teilnehmende',player);}
     return state(s,player);
+  }
+  if(action==='chooseRole'){
+    const player=playerFor(s,p.token);if(s.status!=='lobby')throw Error('Die Rollenwahl ist abgeschlossen.');
+    if(p.role!=='Kauf'&&p.role!=='Verkauf')throw Error('Bitte eine Rolle wählen.');
+    if(player.role)throw Error('Deine Rolle wurde bereits gewählt.');
+    player.role=p.role;update('Teilnehmende',player);return state(s,player);
   }
   if(action==='adminState'){adminFor(s,p.token);return state(s,'admin');}
   if(action==='playerState'){return state(s,playerFor(s,p.token));}
