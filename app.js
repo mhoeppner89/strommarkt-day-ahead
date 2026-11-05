@@ -14,7 +14,7 @@ function notice(message){lastNotice=message||'';$('notice').textContent=lastNoti
 let serial=0;
 function request(action,payload){return new Promise((resolve,reject)=>{
  if(!endpoint){reject(new Error('Die Verbindung zum Spielserver ist noch nicht eingerichtet.'));return;}
- const callback=`strommarkt_${Date.now()}_${++serial}`,script=document.createElement('script'),url=new URL(endpoint),timer=setTimeout(()=>finish(false,'Der Spielserver antwortet nicht. Bitte erneut versuchen.'),120000);let done=false;
+ const callback=`strommarkt_${Date.now()}_${++serial}`,script=document.createElement('script'),url=new URL(endpoint),timer=setTimeout(()=>finish(false,'Der Spielserver antwortet nicht. Bitte erneut versuchen.'),action==='phase'?8000:120000);let done=false;
  function finish(ok,value){if(done)return;done=true;clearTimeout(timer);script.remove();delete window[callback];ok?resolve(value):reject(new Error(value||'Verbindung fehlgeschlagen.'));}
  window[callback]=r=>r&&r.ok?finish(true,r.data):finish(false,r&&r.error);
  url.searchParams.set('callback',callback);url.searchParams.set('action',action);url.searchParams.set('payload',JSON.stringify(payload));script.src=url.toString();script.onerror=()=>finish(false,'Der Spielserver ist nicht erreichbar.');document.head.append(script);
@@ -22,8 +22,8 @@ function request(action,payload){return new Promise((resolve,reject)=>{
 async function api(action,payload){
  for(let attempt=0;attempt<10;attempt++){
   try{return await request(action,payload);}catch(e){
-   if(action==='removeWaiting'||!['SERVER_BELEGT','Der Spielserver antwortet nicht. Bitte erneut versuchen.','Der Spielserver ist nicht erreichbar.'].includes(e.message)||attempt===9)throw e;
-   if(action!=='adminState'&&action!=='playerState')notice('Viele Anfragen gleichzeitig. Bitte warten …');
+   if(action==='removeWaiting'||action==='phase'||!['SERVER_BELEGT','Der Spielserver antwortet nicht. Bitte erneut versuchen.','Der Spielserver ist nicht erreichbar.'].includes(e.message)||attempt===9)throw e;
+   if(!['adminState','playerState','phase'].includes(action))notice('Viele Anfragen gleichzeitig. Bitte warten …');
    await new Promise(resolve=>setTimeout(resolve,1000+Math.floor(Math.random()*4000)));
   }
  }
