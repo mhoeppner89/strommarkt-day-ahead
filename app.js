@@ -47,18 +47,18 @@ function drawChart(data,mode){const holder=$('chart');holder.replaceChildren();c
 }
 function render(){
  $('mode-link').textContent=isAdmin?'Zur Teilnahme':'Spielleitung';$('mode-link').href=isAdmin?'./':'?leitung=1';visible('join',!code&&!isAdmin);visible('admin-create',!code&&isAdmin);visible('game',Boolean(code&&state));if(!state||!code)return;
- const s=state;$('session-code').textContent=s.code;$('status-label').textContent=phaseText(s);$('status-dot').className='dot '+s.status;
- $('round-number').textContent=String(s.round||0).padStart(2,'0');$('round-caption').textContent=s.round?`RUNDE ${s.round} VON 5`:'MARKT';
- let title,copy;if(s.status==='lobby'){title=isAdmin?'Der Markt öffnet gleich':'Du bist dabei';copy=isAdmin?'Warte, bis alle beigetreten sind.':'Warte auf den Start.';}
- else if(s.status==='open'){title=isAdmin?'Die Auktion läuft':'Dein Gebot';copy=isAdmin?'Die Gebote sind verdeckt.':'Gib deinen Preis für 1 MWh ein.';}
- else if(s.status==='review'){title=`Runde ${s.round} ist ausgewertet`;copy=isAdmin?'Starte die nächste Runde.':'Warte auf die nächste Runde.';}
- else{title='Alle fünf Runden sind beendet';copy='Vergleiche Preise und Mengen.';}
- $('stage-title').textContent=title;$('stage-copy').textContent=copy;visible('clock',s.status==='open');drawTimer();
+ const s=state;$('session-code').textContent=s.code;
+ $('round-caption').textContent=s.round?`Runde ${s.round} von 5`:'Markt';
+ let title;if(s.status==='lobby')title=isAdmin?'Warten auf Teilnehmende':'Du bist dabei';
+ else if(s.status==='open')title=isAdmin?'Auktion läuft':'Dein Gebot für 1 MWh';
+ else if(s.status==='review')title=`Runde ${s.round} ausgewertet`;
+ else title='Spiel beendet';
+ $('stage-title').textContent=title;visible('clock',s.status==='open');drawTimer();
  visible('admin-controls',isAdmin);visible('start-round',isAdmin&&(s.status==='lobby'||s.status==='review'));$('start-round').textContent=s.status==='lobby'?'Runde 1 starten':`Runde ${s.round+1} starten`;
  $('start-round').disabled=busy||(s.status==='lobby'&&s.players<2);visible('close-round',isAdmin&&s.status==='open');visible('new-session',isAdmin&&s.status==='finished');
  visible('admin-card',isAdmin);visible('private-card',!isAdmin&&Boolean(s.me&&s.me.role));
  if(isAdmin){$('player-count').textContent=s.players;$('bid-count').textContent=s.submitted;$('roles').textContent=s.roles&&s.roles.buyers?`${s.roles.buyers} Kauf · ${s.roles.sellers} Verkauf`:s.status==='lobby'?'Mindestens zwei Teilnehmende.':'';}
- else if(s.me&&s.me.role){const buying=s.me.role==='Kauf';$('role-label').textContent=buying?'Du kaufst Strom':'Du verkaufst Strom';$('value-label').textContent=buying?'DEIN NUTZEN':'DEINE KOSTEN';$('private-value').textContent=s.me.value;$('private-explainer').textContent=buying?'Punkte = dein Nutzen − Marktpreis.':'Punkte = Marktpreis − deine Kosten.';const last=s.me.results.at(-1);$('score').textContent=last?last.cumulative:0;
+ else if(s.me&&s.me.role){const buying=s.me.role==='Kauf';$('role-label').textContent=buying?'Du kaufst Strom':'Du verkaufst Strom';$('value-label').textContent=buying?'Nutzen':'Kosten';$('private-value').textContent=s.me.value;$('private-explainer').textContent=buying?'Punkte = Nutzen − Preis':'Punkte = Preis − Kosten';const last=s.me.results.at(-1);$('score').textContent=last?last.cumulative:0;
  $('bid-label').textContent=buying?'Dein höchster Kaufpreis':'Dein niedrigster Verkaufspreis';$('bid-button').textContent=s.me.bid===null?'Gebot abgeben':'Gebot ändern';
  if(lastRound!==s.round){$('bid').value=s.me.bid===null?'':s.me.bid;lastRound=s.round;}else if(document.activeElement!==$('bid')&&s.me.bid!==null){$('bid').value=s.me.bid;}}
  visible('bid-form',!isAdmin&&s.status==='open'&&Boolean(s.me&&s.me.role));
