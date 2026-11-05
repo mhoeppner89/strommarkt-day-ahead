@@ -105,6 +105,7 @@ function dispatch(action,p,deferState){
     const instructorHash=PropertiesService.getScriptProperties().getProperty('INSTRUCTOR_KEY_HASH');
     if(!instructorHash||requireToken(p.instructorKey)!==instructorHash)throw Error('Leitungszugang ungültig.');
     const adminHash=requireToken(p.token),duration=0;
+    const existing=rows('Sitzungen').find(x=>x.adminHash===adminHash);if(existing)return respond(existing,'admin');
     const s={code:newCode(),adminHash:adminHash,status:'lobby',round:0,deadline:'',duration:duration,created:new Date().toISOString()};append('Sitzungen',s);return respond(s,'admin');
   }
   let s=sessionFor(p.code);
@@ -116,18 +117,21 @@ function dispatch(action,p,deferState){
   if(action==='chooseRole'){
     const player=playerFor(s,p.token);if(s.status!=='lobby')throw Error('Die Rollenwahl ist abgeschlossen.');
     if(p.role!=='Kauf'&&p.role!=='Verkauf')throw Error('Bitte eine Rolle wählen.');
+    if(player.role===p.role)return respond(s,player);
     if(player.role)throw Error('Deine Rolle wurde bereits gewählt.');
     player.role=p.role;update('Teilnehmende',player);return respond(s,player);
   }
   if(action==='adminState'){adminFor(s,p.token);return respond(s,'admin');}
   if(action==='playerState'){return respond(s,playerFor(s,p.token));}
   if(action==='start'){
-    adminFor(s,p.token);if(s.status==='lobby'){initializeRoles(s);s.round=1;}
+    adminFor(s,p.token);
+    if(Number.isInteger(p.previousRound)){if(s.status==='open'&&Number(s.round)===p.previousRound+1)return respond(s,'admin');if(Number(s.round)!==p.previousRound)throw Error('Die Runde hat sich geändert.');}
+    if(s.status==='lobby'){initializeRoles(s);s.round=1;}
     else if(s.status==='review'&&Number(s.round)<5)s.round=Number(s.round)+1;
     else throw Error('Die nächste Runde kann noch nicht gestartet werden.');
     s.status='open';s.deadline='';update('Sitzungen',s);return respond(s,'admin');
   }
-  if(action==='close'){adminFor(s,p.token);if(s.status!=='open')throw Error('Es läuft gerade keine Runde.');closeRound(s);return respond(s,'admin');}
+  if(action==='close'){adminFor(s,p.token);if(Number.isInteger(p.round)&&Number(s.round)!==p.round)throw Error('Die Runde hat sich geändert.');if(s.status!=='open'){if(Number.isInteger(p.round)&&(s.status==='review'||s.status==='finished'))return respond(s,'admin');throw Error('Es läuft gerade keine Runde.');}closeRound(s);return respond(s,'admin');}
   if(action==='bid'){
     const player=playerFor(s,p.token);if(s.status!=='open')throw Error('Die Gebotsrunde ist geschlossen.');
     if(Number(p.round)!==Number(s.round))throw Error('Die Runde hat sich geändert.');
@@ -156,7 +160,7 @@ function doGet(e){
     if(readOnly)response={ok:true,data:result};
     else {const s=sessionFor(result.session.code),viewer=result.viewer==='admin'?'admin':playerFor(s,p.token);response={ok:true,data:state(s,viewer)};}
 
-  }catch(err){response={ok:false,error:String(err.message||err)};}
+  }catch(err){const message=String(err.message||err);response={ok:false,error:/Zeitüberschreitung bei Anforderung der Exklusivbearbeitung|Service invoked too many times|Service using too much computer time|Lock timeout/i.test(message)?'SERVER_BELEGT':message};}
   finally{if(locked)try{flushAndRelease(lock);}catch(_){}}
   const json=JSON.stringify(response).replace(/</g,'\\u003c');
   return ContentService.createTextOutput(cb?cb+'('+json+');':json).setMimeType(cb?ContentService.MimeType.JAVASCRIPT:ContentService.MimeType.JSON);
