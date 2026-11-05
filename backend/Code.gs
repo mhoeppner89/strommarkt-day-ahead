@@ -6,10 +6,13 @@ const TABLES = {
   Runden: ['code','round','price','quantity','submitted','surplus','potential','cleared'],
   Ergebnisse: ['code','round','playerHash','number','role','value','bid','matched','price','points','cumulative','cleared']
 };
+let bookCache=null, tableCache={};
+function resetCache(){bookCache=null;tableCache={};}
 function book() {
+  if(bookCache)return bookCache;
   const id=PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
   if(!id)throw Error('SPREADSHEET_ID ist in den Skripteigenschaften nicht gesetzt.');
-  return SpreadsheetApp.openById(id);
+  bookCache=SpreadsheetApp.openById(id);return bookCache;
 }
 function install() { ensureTables(); }
 function ensureTables() {
@@ -22,11 +25,15 @@ function ensureTables() {
   });
 }
 function rows(name) {
-  const sh=book().getSheetByName(name), data=sh.getDataRange().getValues();
-  return data.slice(1).map((r,i)=>{const x={_row:i+2};TABLES[name].forEach((k,j)=>x[k]=r[j]);return x;}).filter(x=>String(x[TABLES[name][0]])!=='');
+  if(tableCache[name])return tableCache[name];
+  const sh=book().getSheetByName(name);if(!sh)throw Error('Die Tabelle ist noch nicht initialisiert.');
+  const data=sh.getDataRange().getValues();
+  tableCache[name]=data.slice(1).map((r,i)=>{const x={_row:i+2};TABLES[name].forEach((k,j)=>x[k]=r[j]);return x;}).filter(x=>String(x[TABLES[name][0]])!=='');
+  return tableCache[name];
 }
-function append(name,obj){book().getSheetByName(name).appendRow(TABLES[name].map(k=>obj[k]===undefined?'':obj[k]));}
-function update(name,obj){book().getSheetByName(name).getRange(obj._row,1,1,TABLES[name].length).setValues([TABLES[name].map(k=>obj[k]===undefined?'':obj[k])]);}
+function append(name,obj){book().getSheetByName(name).appendRow(TABLES[name].map(k=>obj[k]===undefined?'':obj[k]));delete tableCache[name];}
+function appendMany(name,items){if(!items.length)return;const sh=book().getSheetByName(name);sh.getRange(sh.getLastRow()+1,1,items.length,TABLES[name].length).setValues(items.map(obj=>TABLES[name].map(k=>obj[k]===undefined?'':obj[k])));delete tableCache[name];}
+function update(name,obj){book().getSheetByName(name).getRange(obj._row,1,1,TABLES[name].length).setValues([TABLES[name].map(k=>obj[k]===undefined?'':obj[k])]);delete tableCache[name];}
 function hash(s){return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,String(s),Utilities.Charset.UTF_8).map(x=>('0'+(x&255).toString(16)).slice(-2)).join('');}
 function requireToken(t){if(!/^[a-f0-9]{48}$/.test(String(t||'')))throw Error('Ungültiger Zugang.');return hash(t);}
 function requireCode(c){c=String(c||'').toUpperCase();if(!/^[A-Z2-9]{6}$/.test(c))throw Error('Ungültiger Sitzungscode.');return c;}
@@ -36,7 +43,13 @@ function playerFor(s,token){const h=requireToken(token),p=rows('Teilnehmende').f
 function allPlayers(s){return rows('Teilnehmende').filter(x=>x.code===s.code);}
 function newCode(){const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';for(let tries=0;tries<100;tries++){let x='';for(let i=0;i<6;i++)x+=alphabet[Math.floor(Math.random()*alphabet.length)];if(!rows('Sitzungen').some(s=>s.code===x))return x;}throw Error('Kein Sitzungscode verfügbar.');}
 function shuffled(xs){xs=xs.slice();for(let i=xs.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[xs[i],xs[j]]=[xs[j],xs[i]];}return xs;}
-function initializeRoles(s){const players=shuffled(allPlayers(s));if(players.length<2)throw Error('Mindestens zwei Personen müssen beitreten.');players.forEach((p,i)=>{p.role=i%2===0?'Kauf':'Verkauf';p.value=p.role==='Kauf'?95+Math.floor(Math.random()*61):45+Math.floor(Math.random()*61);update('Teilnehmende',p);});}
+function initializeRoles(s){
+  const players=shuffled(allPlayers(s));if(players.length<2)throw Error('Mindestens zwei Personen müssen beitreten.');
+  const assigned={};players.forEach((p,i)=>{const role=i%2===0?'Kauf':'Verkauf';assigned[p.playerHash]={role,value:role==='Kauf'?95+Math.floor(Math.random()*61):45+Math.floor(Math.random()*61)};});
+  const sh=book().getSheetByName('Teilnehmende'),count=sh.getLastRow()-1,width=TABLES.Teilnehmende.length;
+  const values=sh.getRange(2,1,count,width).getValues();values.forEach(row=>{if(row[0]===s.code&&assigned[row[1]]){row[3]=assigned[row[1]].role;row[4]=assigned[row[1]].value;}});
+  sh.getRange(2,1,count,width).setValues(values);delete tableCache.Teilnehmende;
+}
 function ordersFor(s){return rows('Gebote').filter(o=>o.code===s.code&&Number(o.round)===Number(s.round));}
 function resultFor(s,r){return rows('Runden').find(x=>x.code===s.code&&Number(x.round)===Number(r));}
 // Sorted double auction. The chosen price lies inside all accepted limits and all rejected limits.
@@ -60,18 +73,19 @@ function closeRound(s){
   const values=players.filter(p=>p.role==='Kauf').map(p=>Number(p.value)).sort((a,b)=>b-a),costs=players.filter(p=>p.role==='Verkauf').map(p=>Number(p.value)).sort((a,b)=>a-b);
   let potential=0;for(let i=0;i<Math.min(values.length,costs.length)&&values[i]>costs[i];i++)potential+=values[i]-costs[i];
   if(!existing)append('Runden',{code:s.code,round:s.round,price:out.price===null?'':out.price,quantity:out.quantity,submitted:orders.length,surplus,potential,cleared:time});
-  const results=rows('Ergebnisse');
+  const results=rows('Ergebnisse'),pending=[];
   players.forEach(p=>{
     if(results.some(r=>r.code===s.code&&Number(r.round)===Number(s.round)&&r.playerHash===p.playerHash))return;
     const o=orders.find(q=>q.playerHash===p.playerHash),matched=out.winning.includes(p.playerHash),points=matched?(p.role==='Kauf'?Number(p.value)-out.price:out.price-Number(p.value)):0;
     const previous=results.filter(r=>r.code===s.code&&r.playerHash===p.playerHash).reduce((a,r)=>a+Number(r.points),0);
-    append('Ergebnisse',{code:s.code,round:s.round,playerHash:p.playerHash,number:p.number,role:p.role,value:p.value,bid:o?o.bid:'',matched:matched?'ja':'nein',price:matched?out.price:'',points:points,cumulative:previous+points,cleared:time});
+    pending.push({code:s.code,round:s.round,playerHash:p.playerHash,number:p.number,role:p.role,value:p.value,bid:o?o.bid:'',matched:matched?'ja':'nein',price:matched?out.price:'',points:points,cumulative:previous+points,cleared:time});
   });
+  appendMany('Ergebnisse',pending);
   s.status=Number(s.round)>=5?'finished':'review';s.deadline='';update('Sitzungen',s);
 }
 function tick(s){if(s.status==='open'&&Number(s.deadline)<=Date.now())closeRound(s);return s;}
 function state(s,viewer){
-  tick(s);const players=allPlayers(s),summary=rows('Runden').filter(x=>x.code===s.code).map(x=>({round:Number(x.round),price:x.price===''?null:Number(x.price),quantity:Number(x.quantity),submitted:Number(x.submitted)}));
+  const players=allPlayers(s),summary=rows('Runden').filter(x=>x.code===s.code).map(x=>({round:Number(x.round),price:x.price===''?null:Number(x.price),quantity:Number(x.quantity),submitted:Number(x.submitted)}));
   const base={code:s.code,status:s.status,round:Number(s.round),deadline:s.deadline?Number(s.deadline):null,duration:Number(s.duration),players:players.length,submitted:s.status==='open'?ordersFor(s).length:0,history:summary};
   if(viewer==='admin'){
     base.roles={buyers:players.filter(p=>p.role==='Kauf').length,sellers:players.filter(p=>p.role==='Verkauf').length};
@@ -92,7 +106,7 @@ function dispatch(action,p){
     if(!Number.isInteger(duration)||duration<30||duration>600)throw Error('Rundendauer muss zwischen 30 und 600 Sekunden liegen.');
     const s={code:newCode(),adminHash:adminHash,status:'lobby',round:0,deadline:'',duration:duration,created:new Date().toISOString()};append('Sitzungen',s);return state(s,'admin');
   }
-  let s=tick(sessionFor(p.code));
+  let s=sessionFor(p.code);
   if(action==='join'){
     const playerHash=requireToken(p.token),list=allPlayers(s);let player=list.find(x=>x.playerHash===playerHash);
     if(!player){if(s.status!=='lobby')throw Error('Diese Sitzung hat bereits begonnen.');if(list.length>=60)throw Error('Diese Sitzung ist mit 60 Teilnehmenden voll.');player={code:s.code,playerHash:playerHash,number:list.length+1,role:'',value:'',joined:new Date().toISOString()};append('Teilnehmende',player);}
@@ -118,13 +132,26 @@ function dispatch(action,p){
   }
   throw Error('Unbekannte Aktion.');
 }
+function flushAndRelease(lock){try{SpreadsheetApp.flush();}finally{lock.releaseLock();}}
 function doGet(e){
   const args=(e&&e.parameter)||{},cb=String(args.callback||'');
   if(cb&&!/^[a-zA-Z_$][0-9a-zA-Z_$]{0,70}$/.test(cb))return ContentService.createTextOutput('Ungültiger Callback.');
-  let response;const lock=LockService.getScriptLock();
-  try{lock.waitLock(20000);if(String(args.action||'')==='create')ensureTables();let p={};try{p=JSON.parse(args.payload||'{}');}catch(_){throw Error('Ungültige Anfrage.');}response={ok:true,data:dispatch(String(args.action||''),p)};}
-  catch(err){response={ok:false,error:String(err.message||err)};}
-  finally{try{lock.releaseLock();}catch(_){}}
+  let response,locked=false;const lock=LockService.getScriptLock();resetCache();
+  try{
+    let p={};try{p=JSON.parse(args.payload||'{}');}catch(_){throw Error('Ungültige Anfrage.');}
+    const action=String(args.action||''),readOnly=action==='adminState'||action==='playerState';
+    if(readOnly){
+      const s=sessionFor(p.code);
+      if(s.status==='open'&&Number(s.deadline)<=Date.now()){
+        lock.waitLock(20000);locked=true;resetCache();tick(sessionFor(p.code));flushAndRelease(lock);locked=false;resetCache();
+      }
+    }else{
+      lock.waitLock(20000);locked=true;resetCache();
+      if(action==='create')ensureTables();else tick(sessionFor(p.code));
+    }
+    response={ok:true,data:dispatch(action,p)};
+  }catch(err){response={ok:false,error:String(err.message||err)};}
+  finally{if(locked)try{flushAndRelease(lock);}catch(_){}}
   const json=JSON.stringify(response).replace(/</g,'\\u003c');
   return ContentService.createTextOutput(cb?cb+'('+json+');':json).setMimeType(cb?ContentService.MimeType.JAVASCRIPT:ContentService.MimeType.JSON);
 }
