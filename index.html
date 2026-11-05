@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <title>Strommarkt</title>
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
   <script src="config.js" defer></script>
-  <script src="app.js?v=4" defer></script>
+  <script src="app.js?v=5" defer></script>
 </head>
 <body>
 <header class="masthead"><h1>Strommarkt</h1></header>
@@ -40,6 +40,7 @@
       <section class="stage">
         <div class="stage-top"><span id="round-caption" class="section-label">Markt</span></div>
         <h2 id="stage-title"></h2>
+        <form id="role-form" class="role-form hidden"><fieldset><legend>Rolle</legend><label class="role-option"><input type="radio" name="role" value="Kauf" required><span>Käufer</span></label><label class="role-option"><input type="radio" name="role" value="Verkauf"><span>Verkäufer</span></label></fieldset><button class="button primary" type="submit">Rolle bestätigen</button><p class="hint">Die Rolle bleibt für alle fünf Runden gleich.</p></form>
         <form id="bid-form" class="bid-form hidden"><label for="bid" id="bid-label"></label><div class="bid-control"><div class="price-input"><input id="bid" type="number" min="0" max="500" step="1" inputmode="numeric" required><span>€/MWh</span></div><button id="bid-button" class="button primary" type="submit">Gebot abgeben</button></div><p class="hint">0–500 €/MWh · bis Rundenschluss änderbar</p></form>
         <div id="result" class="round-result hidden"></div>
         <div id="admin-controls" class="admin-controls hidden"><button id="start-round" type="button" class="button primary hidden">Runde starten</button><button id="close-round" type="button" class="button secondary hidden">Runde jetzt auswerten</button><button id="new-session" type="button" class="button secondary hidden">Neue Sitzung</button></div>
