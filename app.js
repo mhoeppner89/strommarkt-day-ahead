@@ -5,7 +5,7 @@ let stored;try{stored={...fresh(),...JSON.parse(localStorage.getItem(STORAGE)||'
 const fragment=new URLSearchParams(location.hash.slice(1)),incomingKey=fragment.get('key')||'';
 if(isAdmin&&/^[a-f0-9]{48}$/.test(incomingKey)){stored.instructorKey=incomingKey;localStorage.setItem(STORAGE,JSON.stringify(stored));}
 const room=(query.get('raum')||'').toUpperCase();
-let code=isAdmin?stored.activeAdmin:stored.activePlayer,token=code?(isAdmin?stored.admins[code]:stored.players[code]):'',state=null,busy=false,polling=false,pollFailures=0,actionEpoch=0,lastNotice='',lastRound=null;
+let code=isAdmin?stored.activeAdmin:stored.activePlayer,token=code?(isAdmin?stored.admins[code]:stored.players[code]):'',state=null,busy=false,polling=false,pollFailures=0,actionEpoch=0,lastNotice='',lastRound=null,lastFullPoll=0;
 const persist=()=>localStorage.setItem(STORAGE,JSON.stringify(stored));
 const secret=()=>Array.from(crypto.getRandomValues(new Uint8Array(24)),x=>x.toString(16).padStart(2,'0')).join('');
 const visible=(id,yes)=>$(id).classList.toggle('hidden',!yes);
@@ -30,7 +30,7 @@ async function api(action,payload){
 }
 async function action(name,extra={}){
  if(busy)return null;busy=true;actionEpoch++;const pending=setTimeout(()=>visible('working',true),1500);document.querySelectorAll('button[type=submit],#start-round,#close-round,#remove-waiting').forEach(b=>b.disabled=true);
- try{const result=await api(name,{code,token,...extra});state=result;notice('');render();return result;}
+ try{const result=await api(name,{code,token,...extra});state=result;lastFullPoll=Date.now();notice('');render();return result;}
  catch(e){notice(e.message==='SERVER_BELEGT'?'Der Server ist ausgelastet. Bitte erneut versuchen.':e.message);return null;}
  finally{clearTimeout(pending);visible('working',false);busy=false;document.querySelectorAll('button[type=submit],#start-round,#close-round,#remove-waiting').forEach(b=>b.disabled=false);if(state)render();}
 }
@@ -90,6 +90,9 @@ $('start-round').addEventListener('click',()=>action('start',{previousRound:stat
 $('bid-form').addEventListener('submit',async e=>{e.preventDefault();const bid=Number($('bid').value);if(!Number.isInteger(bid)||bid<0||bid>500){notice('Bitte einen ganzen Betrag zwischen 0 und 500 eingeben.');return;}const wouldLose=state.me.role==='Kauf'?bid>state.me.value:bid<state.me.value;if(wouldLose&&!window.confirm('Dieses Gebot kann bei einem Abschluss zu einem Verlust führen. Möchtest du es trotzdem abgeben?'))return;await action('bid',{round:state.round,bid});});
 $('leave').addEventListener('click',()=>{if(!window.confirm('Sitzung auf diesem Gerät verlassen? Du kannst mit demselben Sitzungscode zurückkehren.'))return;if(isAdmin)stored.activeAdmin='';else stored.activePlayer='';persist();state=null;code='';token='';notice('');render();});
 $('new-session').addEventListener('click',()=>{stored.activeAdmin='';persist();code='';token='';state=null;render();});
-async function poll(){if(!code||!token||busy||polling)return;polling=true;const epoch=actionEpoch;try{const r=await api(isAdmin?'adminState':'playerState',{code,token});if(epoch===actionEpoch){pollFailures=0;state=r;if(lastNotice)notice('');render();}}catch(e){if(epoch===actionEpoch&&++pollFailures>=3)notice('Verbindung unterbrochen. Es wird weiter versucht.');}finally{polling=false;}}
-setInterval(poll,15000+Math.floor(Math.random()*6000));if(!isAdmin&&room){code='';token='';render();joinRoom(room);}else{render();if(code&&token)poll();}
+async function poll(){if(!code||!token||busy||polling)return;polling=true;const epoch=actionEpoch;try{
+ if(!isAdmin&&state&&Date.now()-lastFullPoll<30000){const phase=await api('phase',{code});if(epoch!==actionEpoch)return;if(phase&&phase===`${state.status}:${state.round}`){pollFailures=0;return;}}
+ const r=await api(isAdmin?'adminState':'playerState',{code,token});if(epoch===actionEpoch){pollFailures=0;state=r;lastFullPoll=Date.now();if(lastNotice)notice('');render();}
+ }catch(e){if(epoch===actionEpoch&&++pollFailures>=3)notice('Verbindung unterbrochen. Es wird weiter versucht.');}finally{polling=false;}}
+setInterval(poll,4500+Math.floor(Math.random()*2500));if(!isAdmin&&room){code='';token='';render();joinRoom(room);}else{render();if(code&&token)poll();}
 })();
