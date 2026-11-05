@@ -29,10 +29,10 @@ async function api(action,payload){
  }
 }
 async function action(name,extra={}){
- if(busy)return null;busy=true;actionEpoch++;document.querySelectorAll('button[type=submit],#start-round,#close-round').forEach(b=>b.disabled=true);
+ if(busy)return null;busy=true;actionEpoch++;const pending=setTimeout(()=>visible('working',true),1500);document.querySelectorAll('button[type=submit],#start-round,#close-round').forEach(b=>b.disabled=true);
  try{const result=await api(name,{code,token,...extra});state=result;notice('');render();return result;}
  catch(e){notice(e.message==='SERVER_BELEGT'?'Der Server ist ausgelastet. Bitte erneut versuchen.':e.message);return null;}
- finally{busy=false;document.querySelectorAll('button[type=submit],#start-round,#close-round').forEach(b=>b.disabled=false);if(state)render();}
+ finally{clearTimeout(pending);visible('working',false);busy=false;document.querySelectorAll('button[type=submit],#start-round,#close-round').forEach(b=>b.disabled=false);if(state)render();}
 }
 function el(tag,cls,text){const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=text;return x;}
 function addRow(parent,cells){const tr=el('tr');cells.forEach(v=>tr.appendChild(el('td','',String(v))));parent.appendChild(tr);}
