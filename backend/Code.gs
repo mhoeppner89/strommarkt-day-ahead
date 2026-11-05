@@ -160,15 +160,27 @@ function doGet(e){
   let response,locked=false;const lock=LockService.getScriptLock();resetCache();
   try{
     let p={};try{p=JSON.parse(args.payload||'{}');}catch(_){throw Error('Ungültige Anfrage.');}
-    const action=String(args.action||''),readOnly=action==='adminState'||action==='playerState';
+    const action=String(args.action||''),readOnly=action==='adminState'||action==='playerState'||action==='phase';
+    if(action==='phase'){
+      const key='phase:'+requireCode(p.code);let phase=null;
+      try{phase=CacheService.getScriptCache().get(key);}catch(_){}
+      response={ok:true,data:phase||null};
+    }else{
     if(!readOnly){
       try{lock.waitLock(20000);}catch(_){throw Error('SERVER_BELEGT');}locked=true;resetCache();
       if(action==='create')ensureTables();
     }
     const result=dispatch(action,p,!readOnly);
-    if(locked){flushAndRelease(lock);locked=false;resetCache();}
+    if(locked){
+      SpreadsheetApp.flush();
+      if(action==='create'||action==='start'||action==='close'){
+        try{CacheService.getScriptCache().put('phase:'+result.session.code,result.session.status+':'+Number(result.session.round),21600);}catch(_){}
+      }
+      lock.releaseLock();locked=false;resetCache();
+    }
     if(readOnly)response={ok:true,data:result};
     else {const s=sessionFor(result.session.code),viewer=result.viewer==='admin'?'admin':playerFor(s,p.token);response={ok:true,data:state(s,viewer)};}
+    }
 
   }catch(err){const message=String(err.message||err);response={ok:false,error:/Zeitüberschreitung bei Anforderung der Exklusivbearbeitung|Service invoked too many times|Service using too much computer time|Lock timeout/i.test(message)?'SERVER_BELEGT':message};}
   finally{if(locked)try{flushAndRelease(lock);}catch(_){}}
