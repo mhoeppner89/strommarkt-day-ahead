@@ -7,10 +7,10 @@
   <title>Strommarkt</title>
   <link rel="stylesheet" href="style.css?v=5">
   <script src="config.js" defer></script>
-<script src="app.js?v=12" defer></script>
+  <script src="app.js?v=13" defer></script>
 </head>
 <body>
-<header class="masthead"><h1>Strommarkt</h1></header>
+<header class="masthead"><h1>Strommarkt</h1><a id="admin-link" href="?leitung=1">Spielleitung</a></header>
 <main>
 <div id="notice" class="notice hidden" role="alert"></div>
 <p id="working" class="hint hidden" role="status">Bitte warten …</p>
@@ -19,6 +19,13 @@
   <form id="join-form" class="inline-form">
     <label for="join-code">Sitzungscode</label>
     <div class="input-row"><input id="join-code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" required><button class="button primary" type="submit">Beitreten</button></div>
+  </form>
+</section>
+<section id="admin-login" class="panel start hidden">
+  <h2>Spielleitung</h2>
+  <form id="admin-login-form" class="inline-form">
+    <label for="admin-password">Passwort</label>
+    <div class="input-row"><input id="admin-password" type="password" autocomplete="current-password" required><button class="button primary" type="submit">Weiter</button></div>
   </form>
 </section>
 <section id="admin-create" class="panel start hidden">
