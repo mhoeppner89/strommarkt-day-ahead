@@ -101,6 +101,13 @@ function state(s,viewer){
 }
 function dispatch(action,p,deferState){
   const respond=(s,viewer)=>deferState?{session:s,viewer:viewer}:state(s,viewer);
+  if(action==='publicRooms'||action==='adminRooms'){
+    if(action==='adminRooms'&&p.instructorPassword!=='EVWL2026')throw Error('Leitungszugang ungültig.');
+    if(!book().getSheetByName('Sitzungen')||!book().getSheetByName('Teilnehmende'))return [];
+    const active=['lobby','open','review'];
+    return rows('Sitzungen').filter(s=>action==='publicRooms'?s.status==='lobby':active.includes(s.status))
+      .map(s=>({code:s.code,status:s.status,round:Number(s.round),players:allPlayers(s).length}));
+  }
   if(action==='create'){
     if(p.instructorPassword!=='EVWL2026')throw Error('Leitungszugang ungültig.');
     const adminHash=requireToken(p.token),duration=0;
@@ -108,7 +115,15 @@ function dispatch(action,p,deferState){
     const s={code:newCode(),adminHash:adminHash,status:'lobby',round:0,deadline:'',duration:duration,created:new Date().toISOString()};append('Sitzungen',s);return respond(s,'admin');
   }
   let s=sessionFor(p.code);
+  if(action==='endSession'){
+    if(p.instructorPassword!=='EVWL2026')throw Error('Leitungszugang ungültig.');
+    if(s.status!=='closed'&&s.status!=='finished'){
+      s.status='closed';s.deadline='';update('Sitzungen',s);
+    }
+    return respond(s,'admin');
+  }
   if(action==='join'){
+    if(s.status==='closed')throw Error('Diese Sitzung wurde geschlossen.');
     const playerHash=requireToken(p.token),list=allPlayers(s);let player=rows('Teilnehmende').find(x=>x.code===s.code&&x.playerHash===playerHash);
     if(!player||player.role==='ausgeschlossen'){
       if(s.status!=='lobby')throw Error('Diese Sitzung hat bereits begonnen.');if(list.length>=60)throw Error('Diese Sitzung ist mit 60 Teilnehmenden voll.');
@@ -159,7 +174,7 @@ function doGet(e){
   let response,locked=false;const lock=LockService.getScriptLock();resetCache();
   try{
     let p={};try{p=JSON.parse(args.payload||'{}');}catch(_){throw Error('Ungültige Anfrage.');}
-    const action=String(args.action||''),readOnly=action==='adminState'||action==='playerState'||action==='phase';
+    const action=String(args.action||''),readOnly=['adminState','playerState','phase','publicRooms','adminRooms'].includes(action);
     if(action==='phase'){
       const key='phase:'+requireCode(p.code);let phase=null;
       try{phase=CacheService.getScriptCache().get(key);}catch(_){}
@@ -172,7 +187,7 @@ function doGet(e){
     const result=dispatch(action,p,!readOnly);
     if(locked){
       SpreadsheetApp.flush();
-      if(action==='create'||action==='start'||action==='close'){
+      if(action==='create'||action==='start'||action==='close'||action==='endSession'){
         try{CacheService.getScriptCache().put('phase:'+result.session.code,result.session.status+':'+Number(result.session.round),21600);}catch(_){}
       }
       lock.releaseLock();locked=false;resetCache();
