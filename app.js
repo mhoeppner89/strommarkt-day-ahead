@@ -5,15 +5,16 @@ let stored;try{stored={...fresh(),...JSON.parse(localStorage.getItem(STORAGE)||'
 delete stored.instructorKey;
 const room=(query.get('raum')||'').toUpperCase();
 let code=isAdmin?stored.activeAdmin:stored.activePlayer,token=code?(isAdmin?stored.admins[code]:stored.players[code]):'',state=null,busy=false,polling=false,pollFailures=0,actionEpoch=0,lastNotice='',lastRound=null,lastFullPoll=0,adminPassword='',adminUnlocked=false;
+let roomsLoading=false,lastRoomLoad=0;
 const persist=()=>localStorage.setItem(STORAGE,JSON.stringify(stored));
 const secret=()=>Array.from(crypto.getRandomValues(new Uint8Array(24)),x=>x.toString(16).padStart(2,'0')).join('');
 const visible=(id,yes)=>$(id).classList.toggle('hidden',!yes);
-const money=x=>x===null||x===undefined?'–':`${x} €/MWh`;
+const money=x=>x===null||x===undefined?'â€“':`${x} â‚¬/MWh`;
 function notice(message){lastNotice=message||'';$('notice').textContent=lastNotice;visible('notice',Boolean(lastNotice));}
 let serial=0;
 function request(action,payload){return new Promise((resolve,reject)=>{
  if(!endpoint){reject(new Error('Die Verbindung zum Spielserver ist noch nicht eingerichtet.'));return;}
- const callback=`strommarkt_${Date.now()}_${++serial}`,script=document.createElement('script'),url=new URL(endpoint),timer=setTimeout(()=>finish(false,'Der Spielserver antwortet nicht. Bitte erneut versuchen.'),action==='phase'?8000:120000);let done=false;
+ const callback=`strommarkt_${Date.now()}_${++serial}`,script=document.createElement('script'),url=new URL(endpoint),timer=setTimeout(()=>finish(false,'Der Spielserver antwortet nicht. Bitte erneut versuchen.'),['phase','publicRooms','adminRooms'].includes(action)?8000:120000);let done=false;
  function finish(ok,value){if(done)return;done=true;clearTimeout(timer);script.remove();delete window[callback];ok?resolve(value):reject(new Error(value||'Verbindung fehlgeschlagen.'));}
  window[callback]=r=>r&&r.ok?finish(true,r.data):finish(false,r&&r.error);
  url.searchParams.set('callback',callback);url.searchParams.set('action',action);url.searchParams.set('payload',JSON.stringify(payload));script.src=url.toString();script.onerror=()=>finish(false,'Der Spielserver ist nicht erreichbar.');document.head.append(script);
@@ -22,7 +23,7 @@ async function api(action,payload){
  for(let attempt=0;attempt<10;attempt++){
   try{return await request(action,payload);}catch(e){
    if(action==='removeWaiting'||action==='phase'||!['SERVER_BELEGT','Der Spielserver antwortet nicht. Bitte erneut versuchen.','Der Spielserver ist nicht erreichbar.'].includes(e.message)||attempt===9)throw e;
-   if(!['adminState','playerState','phase'].includes(action))notice('Viele Anfragen gleichzeitig. Bitte warten …');
+   if(!['adminState','playerState','phase'].includes(action))notice('Viele Anfragen gleichzeitig. Bitte warten â€¦');
    await new Promise(resolve=>setTimeout(resolve,1000+Math.floor(Math.random()*4000)));
   }
  }
@@ -34,9 +35,42 @@ async function action(name,extra={}){
  finally{clearTimeout(pending);visible('working',false);busy=false;document.querySelectorAll('button[type=submit],#start-round,#close-round,#remove-waiting').forEach(b=>b.disabled=false);if(state)render();}
 }
 function el(tag,cls,text){const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=text;return x;}
+function renderRooms(rooms){
+ const holder=$(isAdmin?'admin-rooms':'public-rooms');holder.replaceChildren();
+ if(!rooms.length){holder.append(el('p','',isAdmin?'Keine offenen RÃ¤ume.':'Zurzeit ist kein Raum offen.'));return;}
+ rooms.forEach(room=>{
+  const row=el('div','room-row'),info=el('div'),actions=el('div','room-actions');
+  info.append(el('span','room-code',room.code));
+  if(isAdmin){const label=room.status==='lobby'?'Warteraum':room.status==='open'?`Runde ${room.round} lÃ¤uft`:`Runde ${room.round} ausgewertet`;info.append(el('span','room-status',`${label} Â· ${room.players} Teilnehmende`));}
+  if(!isAdmin||stored.admins[room.code]){
+   const enter=el('button','button secondary',isAdmin?'Fortsetzen':'Beitreten');enter.type='button';enter.addEventListener('click',()=>isAdmin?resumeRoom(room.code):joinRoom(room.code));actions.append(enter);
+  }
+  if(isAdmin){const close=el('button','button secondary','SchlieÃŸen');close.type='button';close.setAttribute('aria-label',`Raum ${room.code} schlieÃŸen`);close.addEventListener('click',()=>endRoom(room,close));actions.append(close);}
+  row.append(info,actions);holder.append(row);
+ });
+}
+async function loadRooms(force=false){
+ if(code||isAdmin&&!adminUnlocked||roomsLoading||!force&&Date.now()-lastRoomLoad<15000)return;
+ roomsLoading=true;
+ try{const rooms=await request(isAdmin?'adminRooms':'publicRooms',isAdmin?{instructorPassword:adminPassword}:{});if(!code&&(!isAdmin||adminUnlocked)){renderRooms(rooms);lastRoomLoad=Date.now();}}
+ catch(_){if(!code)$(isAdmin?'admin-rooms':'public-rooms').replaceChildren(el('p','','RÃ¤ume konnten nicht geladen werden.'));}
+ finally{roomsLoading=false;}
+}
+async function endRoom(room,button){
+ if(!window.confirm(`Raum ${room.code} schlieÃŸen? Eine laufende Runde wird dabei nicht ausgewertet.`))return;
+ button.disabled=true;
+ try{await api('endSession',{code:room.code,instructorPassword:adminPassword});notice('');await loadRooms(true);}
+ catch(e){notice(e.message==='SERVER_BELEGT'?'Der Server ist ausgelastet. Bitte erneut versuchen.':e.message);}
+ finally{button.disabled=false;}
+}
+async function resumeRoom(c){
+ if(!stored.admins[c]){notice('FÃ¼r diesen Sitzungscode ist auf diesem GerÃ¤t kein Leitungszugang gespeichert.');return;}
+ code=c;token=stored.admins[c];const result=await action('adminState');
+ if(result){stored.activeAdmin=c;persist();render();}else{code='';token='';render();}
+}
 function addRow(parent,cells){const tr=el('tr');cells.forEach(v=>tr.appendChild(el('td','',String(v))));parent.appendChild(tr);}
 function renderHistory(s){const hist=$('history');hist.replaceChildren();const mine=s.me?s.me.results:[];
- s.history.forEach(h=>{const own=mine.find(r=>r.round===h.round);let personal=isAdmin?`${h.submitted} Gebote`:own?(own.matched?`${own.points>=0?'+':''}${own.points} Punkte`:'Kein Handel'):'–';addRow(hist,[h.round,h.price===null?'Kein Handel':money(h.price),`${h.quantity} MWh`,personal]);});
+ s.history.forEach(h=>{const own=mine.find(r=>r.round===h.round);let personal=isAdmin?`${h.submitted} Gebote`:own?(own.matched?`${own.points>=0?'+':''}${own.points} Punkte`:'Kein Handel'):'â€“';addRow(hist,[h.round,h.price===null?'Kein Handel':money(h.price),`${h.quantity} MWh`,personal]);});
  $('personal-heading').textContent=isAdmin?'Abgaben':'Dein Ergebnis';visible('history-panel',s.history.length>0);
 }
 function drawChart(data,mode){const holder=$('chart');holder.replaceChildren();const buyers=data.filter(x=>x.role==='Kauf').map(x=>x.value).sort((a,b)=>b-a),sellers=data.filter(x=>x.role==='Verkauf').map(x=>x.value).sort((a,b)=>a-b), xmax=Math.max(buyers.length,sellers.length,1),ymax=Math.ceil(Math.max(160,...buyers,...sellers)/20)*20;
@@ -48,51 +82,52 @@ function drawChart(data,mode){const holder=$('chart');holder.replaceChildren();c
  function steps(vals,color){if(!vals.length)return;let pts=`${x(0)},${y(vals[0])}`;vals.forEach((v,i)=>{pts+=` ${x(i+1)},${y(v)}`;if(i+1<vals.length)pts+=` ${x(i+1)},${y(vals[i+1])}`;});element('polyline',{points:pts,fill:'none',stroke:color,'stroke-width':3,'stroke-linejoin':'round'});}
  steps(buyers,'#007f96');steps(sellers,'#d07742');
  const ticks=Math.min(5,xmax);for(let i=0;i<=ticks;i++){const v=Math.round(i*xmax/ticks);element('text',{x:x(v),y:b+19,'text-anchor':'middle',fill:'#6d8283','font-size':12},String(v));}
- element('text',{x:(l+r)/2,y:310,'text-anchor':'middle',fill:'#526c6e','font-size':13},'Menge (MWh)');element('text',{x:l,y:12,fill:'#526c6e','font-size':12},'€/MWh');holder.appendChild(svg);
+ element('text',{x:(l+r)/2,y:310,'text-anchor':'middle',fill:'#526c6e','font-size':13},'Menge (MWh)');element('text',{x:l,y:12,fill:'#526c6e','font-size':12},'â‚¬/MWh');holder.appendChild(svg);
  let k=0;while(k<buyers.length&&k<sellers.length&&buyers[k]>=sellers[k])k++;
- if(mode!=='values'){const h=state.history.find(x=>x.round===Number(mode));$('benchmark').textContent=h&&h.price!==null?`Runde ${mode}: ${h.quantity} MWh zu ${h.price} €/MWh.`:`Runde ${mode}: kein Handel.`;return;}
- if(k){const lower=Math.max(sellers[k-1],k<buyers.length?buyers[k]:-Infinity),upper=Math.min(buyers[k-1],k<sellers.length?sellers[k]:Infinity);$('benchmark').textContent=`Theoretisch vorteilhafte Handelsmenge: ${k} MWh · Preisintervall: ${lower}–${upper} €/MWh.`;}
+ if(mode!=='values'){const h=state.history.find(x=>x.round===Number(mode));$('benchmark').textContent=h&&h.price!==null?`Runde ${mode}: ${h.quantity} MWh zu ${h.price} â‚¬/MWh.`:`Runde ${mode}: kein Handel.`;return;}
+ if(k){const lower=Math.max(sellers[k-1],k<buyers.length?buyers[k]:-Infinity),upper=Math.min(buyers[k-1],k<sellers.length?sellers[k]:Infinity);$('benchmark').textContent=`Theoretisch vorteilhafte Handelsmenge: ${k} MWh Â· Preisintervall: ${lower}â€“${upper} â‚¬/MWh.`;}
  else $('benchmark').textContent='Bei diesen privaten Werten gibt es keinen beidseitig vorteilhaften Handel.';
 }
 function render(){
- visible('admin-link',!isAdmin);visible('join',!code&&!isAdmin);visible('admin-login',isAdmin&&!adminUnlocked);visible('admin-create',!code&&isAdmin&&adminUnlocked);visible('game',Boolean(code&&state&&(!isAdmin||adminUnlocked)));if(!state||!code||isAdmin&&!adminUnlocked)return;
+ visible('admin-link',!isAdmin);visible('join',!code&&!isAdmin);visible('admin-login',isAdmin&&!adminUnlocked);visible('admin-create',!code&&isAdmin&&adminUnlocked);visible('game',Boolean(code&&state&&(!isAdmin||adminUnlocked)));if(!state||!code||isAdmin&&!adminUnlocked){loadRooms();return;}
  const s=state;$('session-code').textContent=s.code;visible('share',isAdmin&&s.status==='lobby');
+ $('leave').textContent=isAdmin?'Alle RÃ¤ume':'Verlassen';
  if(isAdmin){const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('raum',s.code);$('room-link').href=url.href;$('room-link').textContent=url.href;}
  $('round-caption').textContent=s.round?`Runde ${s.round} von 5`:'Markt';
- let title;if(s.status==='lobby')title=isAdmin?'Warten auf Teilnehmende':s.me&&s.me.role?(s.me.role==='Kauf'?'Du bist Käufer':'Du bist Verkäufer'):'Wähle deine Rolle';
- else if(s.status==='open')title=isAdmin?'Auktion läuft':'Dein Gebot für 1 MWh';
+ let title;if(s.status==='lobby')title=isAdmin?'Warten auf Teilnehmende':s.me&&s.me.role?(s.me.role==='Kauf'?'Du bist KÃ¤ufer':'Du bist VerkÃ¤ufer'):'WÃ¤hle deine Rolle';
+ else if(s.status==='open')title=isAdmin?'Auktion lÃ¤uft':'Dein Gebot fÃ¼r 1 MWh';
  else if(s.status==='review')title=`Runde ${s.round} ausgewertet`;
- else title='Spiel beendet';
+ else title=s.status==='closed'?'Sitzung geschlossen':'Spiel beendet';
  $('stage-title').textContent=title;visible('role-form',!isAdmin&&s.status==='lobby'&&Boolean(s.me&&!s.me.role));
  visible('admin-controls',isAdmin);visible('start-round',isAdmin&&(s.status==='lobby'||s.status==='review'));$('start-round').textContent=s.status==='lobby'?'Runde 1 starten':`Runde ${s.round+1} starten`;
  $('start-round').disabled=busy||(s.status==='lobby'&&(s.players<2||!s.roles||s.roles.unselected>0));visible('close-round',isAdmin&&s.status==='open');visible('new-session',isAdmin&&s.status==='finished');
  visible('admin-card',isAdmin);visible('private-card',!isAdmin&&Boolean(s.me&&s.me.role&&s.me.value!==null));
  visible('remove-waiting',isAdmin&&s.status==='lobby'&&Boolean(s.roles&&s.roles.unselected));
- if(isAdmin){$('player-count').textContent=s.players;$('bid-count').textContent=s.submitted;$('roles').textContent=s.roles?`${s.roles.buyers} Käufer · ${s.roles.sellers} Verkäufer${s.roles.unselected?` · ${s.roles.unselected} offen`:''}`:'';}
- else if(s.me&&s.me.role&&s.me.value!==null){const buying=s.me.role==='Kauf';$('role-label').textContent=buying?'Du kaufst Strom':'Du verkaufst Strom';$('value-label').textContent=buying?'Nutzen':'Kosten';$('private-value').textContent=s.me.value;$('private-explainer').textContent=buying?'Punkte = Nutzen − Preis':'Punkte = Preis − Kosten';const last=s.me.results.at(-1);$('score').textContent=last?last.cumulative:0;
- $('bid-label').textContent=buying?'Dein höchster Kaufpreis':'Dein niedrigster Verkaufspreis';$('bid-button').textContent=s.me.bid===null?'Gebot abgeben':'Gebot ändern';
+ if(isAdmin){$('player-count').textContent=s.players;$('bid-count').textContent=s.submitted;$('roles').textContent=s.roles?`${s.roles.buyers} KÃ¤ufer Â· ${s.roles.sellers} VerkÃ¤ufer${s.roles.unselected?` Â· ${s.roles.unselected} offen`:''}`:'';}
+ else if(s.me&&s.me.role&&s.me.value!==null){const buying=s.me.role==='Kauf';$('role-label').textContent=buying?'Du kaufst Strom':'Du verkaufst Strom';$('value-label').textContent=buying?'Nutzen':'Kosten';$('private-value').textContent=s.me.value;$('private-explainer').textContent=buying?'Punkte = Nutzen âˆ’ Preis':'Punkte = Preis âˆ’ Kosten';const last=s.me.results.at(-1);$('score').textContent=last?last.cumulative:0;
+ $('bid-label').textContent=buying?'Dein hÃ¶chster Kaufpreis':'Dein niedrigster Verkaufspreis';$('bid-button').textContent=s.me.bid===null?'Gebot abgeben':'Gebot Ã¤ndern';
  if(lastRound!==s.round){$('bid').value=s.me.bid===null?'':s.me.bid;lastRound=s.round;}else if(document.activeElement!==$('bid')&&s.me.bid!==null){$('bid').value=s.me.bid;}}
  visible('bid-form',!isAdmin&&s.status==='open'&&Boolean(s.me&&s.me.role));
- const latest=!isAdmin&&s.me?s.me.results.find(r=>r.round===s.round):null;visible('result',Boolean(latest&&s.status!=='open'));if(latest){const r=$('result');r.replaceChildren();r.append(el('strong','',latest.matched?'Handel abgeschlossen':'Kein Handel'));r.append(el('div','',latest.matched?`Marktpreis ${money(latest.price)} · ${latest.points>=0?'+':''}${latest.points} Punkte`:'Für diese Runde erhältst du 0 Punkte.'));if(latest.bid===null)r.append(el('div','hint','Kein Gebot abgegeben.'));}
+ const latest=!isAdmin&&s.me?s.me.results.find(r=>r.round===s.round):null;visible('result',Boolean(latest&&s.status!=='open'));if(latest){const r=$('result');r.replaceChildren();r.append(el('strong','',latest.matched?'Handel abgeschlossen':'Kein Handel'));r.append(el('div','',latest.matched?`Marktpreis ${money(latest.price)} Â· ${latest.points>=0?'+':''}${latest.points} Punkte`:'FÃ¼r diese Runde erhÃ¤ltst du 0 Punkte.'));if(latest.bid===null)r.append(el('div','hint','Kein Gebot abgegeben.'));}
  renderHistory(s);visible('reveal',s.status==='finished'&&Array.isArray(s.reveal));if(s.status==='finished'&&s.reveal)renderChart();
 }
 function renderChart(){if(!state||!state.reveal)return;const mode=$('curve-select').value;const values=mode==='values'?state.reveal:(state.bids||[]).filter(x=>x.round===Number(mode)).map(x=>({role:x.role,value:x.bid}));$('demand-legend').textContent=mode==='values'?'Zahlungsbereitschaft':'Kaufgebote';$('supply-legend').textContent=mode==='values'?'Kosten':'Verkaufsangebote';drawChart(values,mode);}
 $('curve-select').addEventListener('change',renderChart);
-async function joinRoom(c){c=c.trim().toUpperCase();if(!/^[A-Z2-9]{6}$/.test(c)){notice('Bitte einen gültigen sechsstelligen Sitzungscode eingeben.');return;}code=c;token=stored.players[c]||secret();stored.players[c]=token;persist();const result=await action('join');if(result){stored.players[c]=token;stored.activePlayer=c;persist();render();}else{code='';token='';render();}}
+async function joinRoom(c){c=c.trim().toUpperCase();if(!/^[A-Z2-9]{6}$/.test(c)){notice('Bitte einen gÃ¼ltigen sechsstelligen Sitzungscode eingeben.');return;}code=c;token=stored.players[c]||secret();stored.players[c]=token;persist();const result=await action('join');if(result){stored.players[c]=token;stored.activePlayer=c;persist();render();}else{code='';token='';render();}}
 $('join-form').addEventListener('submit',e=>{e.preventDefault();joinRoom($('join-code').value);});
 $('admin-login-form').addEventListener('submit',e=>{e.preventDefault();if($('admin-password').value!=='EVWL2026'){notice('Passwort ist falsch.');return;}adminPassword=$('admin-password').value;$('admin-password').value='';adminUnlocked=true;notice('');render();if(code&&token)poll();});
-$('copy-link').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('room-link').href);$('copy-status').textContent='Link kopiert';}catch(_){$('copy-status').textContent='Link unten auswählen und kopieren';}});
+$('copy-link').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('room-link').href);$('copy-status').textContent='Link kopiert';}catch(_){$('copy-status').textContent='Link unten auswÃ¤hlen und kopieren';}});
 $('create-form').addEventListener('submit',async e=>{e.preventDefault();code='';token=secret();const result=await action('create',{instructorPassword:adminPassword});if(result){code=result.code;stored.admins[code]=token;stored.activeAdmin=code;persist();render();}else token='';});
-$('resume-form').addEventListener('submit',async e=>{e.preventDefault();const c=$('resume-code').value.trim().toUpperCase();if(!stored.admins[c]){notice('Für diesen Sitzungscode ist auf diesem Gerät kein Leitungszugang gespeichert.');return;}code=c;token=stored.admins[c];const result=await action('adminState');if(result){stored.activeAdmin=c;persist();render();}else{code='';token='';render();}});
+$('resume-form').addEventListener('submit',async e=>{e.preventDefault();resumeRoom($('resume-code').value.trim().toUpperCase());});
 $('remove-waiting').addEventListener('click',()=>{if(window.confirm('Alle Teilnehmenden ohne Rollenwahl entfernen?'))action('removeWaiting');});
 $('role-form').addEventListener('submit',async e=>{e.preventDefault();const choice=document.querySelector('input[name=role]:checked');if(choice)await action('chooseRole',{role:choice.value});});
 $('start-round').addEventListener('click',()=>action('start',{previousRound:state.round}));$('close-round').addEventListener('click',()=>action('close',{round:state.round}));
-$('bid-form').addEventListener('submit',async e=>{e.preventDefault();const bid=Number($('bid').value);if(!Number.isInteger(bid)||bid<0||bid>500){notice('Bitte einen ganzen Betrag zwischen 0 und 500 eingeben.');return;}const wouldLose=state.me.role==='Kauf'?bid>state.me.value:bid<state.me.value;if(wouldLose&&!window.confirm('Dieses Gebot kann bei einem Abschluss zu einem Verlust führen. Möchtest du es trotzdem abgeben?'))return;await action('bid',{round:state.round,bid});});
-$('leave').addEventListener('click',()=>{if(!window.confirm('Sitzung auf diesem Gerät verlassen? Du kannst mit demselben Sitzungscode zurückkehren.'))return;if(isAdmin)stored.activeAdmin='';else stored.activePlayer='';persist();state=null;code='';token='';notice('');render();});
+$('bid-form').addEventListener('submit',async e=>{e.preventDefault();const bid=Number($('bid').value);if(!Number.isInteger(bid)||bid<0||bid>500){notice('Bitte einen ganzen Betrag zwischen 0 und 500 eingeben.');return;}const wouldLose=state.me.role==='Kauf'?bid>state.me.value:bid<state.me.value;if(wouldLose&&!window.confirm('Dieses Gebot kann bei einem Abschluss zu einem Verlust fÃ¼hren. MÃ¶chtest du es trotzdem abgeben?'))return;await action('bid',{round:state.round,bid});});
+$('leave').addEventListener('click',()=>{if(!isAdmin&&!window.confirm('Sitzung auf diesem GerÃ¤t verlassen? Du kannst mit demselben Sitzungscode zurÃ¼ckkehren.'))return;if(isAdmin)stored.activeAdmin='';else stored.activePlayer='';actionEpoch++;persist();state=null;code='';token='';lastRoomLoad=0;notice('');render();});
 $('new-session').addEventListener('click',()=>{stored.activeAdmin='';persist();code='';token='';state=null;render();});
 async function poll(){if(!code||!token||busy||polling||isAdmin&&!adminUnlocked)return;polling=true;const epoch=actionEpoch;try{
  if(!isAdmin&&state&&Date.now()-lastFullPoll<30000){const phase=await api('phase',{code});if(epoch!==actionEpoch)return;if(phase&&phase===`${state.status}:${state.round}`){pollFailures=0;return;}}
- const r=await api(isAdmin?'adminState':'playerState',{code,token});if(epoch===actionEpoch){pollFailures=0;state=r;lastFullPoll=Date.now();if(lastNotice)notice('');render();}
+ const r=await api(isAdmin?'adminState':'playerState',{code,token});if(epoch===actionEpoch){pollFailures=0;if(!isAdmin&&!room&&!state&&(r.status==='finished'||r.status==='closed')){stored.activePlayer='';persist();code='';token='';lastRoomLoad=0;render();return;}state=r;lastFullPoll=Date.now();if(lastNotice)notice('');render();}
  }catch(e){if(epoch===actionEpoch&&e.message==='Sitzung nicht gefunden.'){if(isAdmin)stored.activeAdmin='';else stored.activePlayer='';persist();state=null;code='';token='';notice('');render();}else if(epoch===actionEpoch&&++pollFailures>=3)notice('Verbindung unterbrochen. Es wird weiter versucht.');}finally{polling=false;}}
-setInterval(poll,4500+Math.floor(Math.random()*2500));if(!isAdmin&&room){code='';token='';render();joinRoom(room);}else{render();if(code&&token)poll();}
+setInterval(()=>{poll();loadRooms();},4500+Math.floor(Math.random()*2500));if(!isAdmin&&room){code='';token='';render();joinRoom(room);}else{render();if(code&&token)poll();}
 })();
