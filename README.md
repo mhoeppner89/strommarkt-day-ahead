@@ -4,7 +4,7 @@ Ein synchrones Lehrspiel für eine Lieferstunde und fünf Auktionsrunden. Eine S
 
 ## Ablauf
 
-1. Die Spielleitung öffnet ihren persönlichen Leitungslink, erstellt eine Sitzung und teilt den Raumlink.
+1. Die Spielleitung öffnet auf der Startseite „Spielleitung“, gibt das Passwort ein, erstellt eine Sitzung und teilt den Raumlink.
 2. Studierende treten über den Raumlink bei. Vor dem Start wählen alle einmalig ihre Rolle als Käufer oder Verkäufer. Die Spielleitung sieht die Anzahl der gewählten Rollen. Mindestens zwei Personen sind nötig; alle müssen ihre Rolle gewählt haben.
 3. Jede Person gibt je Runde ein verdecktes ganzzahliges Gebot in €/MWh ab und darf es bis zum Rundenschluss ändern.
 4. Die Spielleitung beendet jede Runde per Klick. Die nächste Runde wird von der Spielleitung gestartet.
@@ -24,7 +24,7 @@ Das statische Frontend braucht ein eigenes, an eine Google-Tabelle gebundenes Ap
 
 1. Eine neue Google-Tabelle erstellen, **Erweiterungen → Apps Script** öffnen und `backend/Code.gs` in `Code.gs` einfügen.
 2. In den Projekteinstellungen die Manifestdatei einblenden und `backend/appsscript.json` als `appsscript.json` übernehmen. Google verlangt für die Web-App den Google-Tabellen-Zugriff `spreadsheets`: Diese Berechtigung erlaubt dem Script-Konto technisch den Zugriff auf alle seine Google-Tabellen. Der Code öffnet ausschließlich die unter `SPREADSHEET_ID` eingetragene Tabelle.
-3. In den Projekteinstellungen unter **Skripteigenschaften** `SPREADSHEET_ID` mit der ID der neuen Tabelle und `INSTRUCTOR_KEY_HASH` mit dem SHA-256-Hash eines zufälligen 48-stelligen Hexadezimal-Schlüssels eintragen. Der persönliche Leitungslink lautet `?leitung=1#key=SCHLÜSSEL`; der Schlüssel darf nicht veröffentlicht werden. Wer ihn kennt, kann Sitzungen erstellen.
+3. In den Projekteinstellungen unter **Skripteigenschaften** `SPREADSHEET_ID` mit der ID der neuen Tabelle eintragen. Das einfache Passwort für die Spielleitung ist im Spielcode festgelegt und dient dazu, versehentliche Zugriffe zu vermeiden.
 4. Als Web-App bereitstellen: **Ausführen als: ich**; **Zugriff: alle, auch ohne Anmeldung**. Der Lehrende muss die von Google angezeigten Rechte ausdrücklich autorisieren. Das Spiel braucht diese Freigabe, damit Studierende ohne Google-Anmeldung Gebote senden können. Die Tabelle selbst bleibt privat.
 5. Die erzeugte `/exec`-URL in `config.js` als `window.STROMMARKT_ENDPOINT` eintragen und das Frontend auf einem öffentlich erreichbaren HTTPS-Host bereitstellen, z. B. über GitHub Pages.
 
@@ -41,4 +41,4 @@ node test/auction.cjs
 node test/server.cjs
 ```
 
-Danach `http://127.0.0.1:4187/?leitung=1#key=ffffffffffffffffffffffffffffffffffffffffffffffff` öffnen (lokaler Testschlüssel). In der Praxis müssen Spielleitung und Teilnehmende verschiedene Browserprofile bzw. Geräte verwenden, damit sie unterschiedliche Teilnehmer-Schlüssel erhalten. Die Tests prüfen unter anderem Preisintervall, Losreihung, Privatsphäre der Werte und den Ablauf über fünf Runden.
+Danach `http://127.0.0.1:4187/` öffnen und „Spielleitung“ wählen (Passwort: `EVWL2026`). In der Praxis müssen Spielleitung und Teilnehmende verschiedene Browserprofile bzw. Geräte verwenden, damit sie unterschiedliche Teilnehmer-Schlüssel erhalten. Die Tests prüfen unter anderem Preisintervall, Losreihung, Privatsphäre der Werte und den Ablauf über fünf Runden.
