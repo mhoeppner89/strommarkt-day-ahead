@@ -93,6 +93,6 @@ $('new-session').addEventListener('click',()=>{stored.activeAdmin='';persist();c
 async function poll(){if(!code||!token||busy||polling||isAdmin&&!adminUnlocked)return;polling=true;const epoch=actionEpoch;try{
  if(!isAdmin&&state&&Date.now()-lastFullPoll<30000){const phase=await api('phase',{code});if(epoch!==actionEpoch)return;if(phase&&phase===`${state.status}:${state.round}`){pollFailures=0;return;}}
  const r=await api(isAdmin?'adminState':'playerState',{code,token});if(epoch===actionEpoch){pollFailures=0;state=r;lastFullPoll=Date.now();if(lastNotice)notice('');render();}
- }catch(e){if(epoch===actionEpoch&&++pollFailures>=3)notice('Verbindung unterbrochen. Es wird weiter versucht.');}finally{polling=false;}}
+ }catch(e){if(epoch===actionEpoch&&e.message==='Sitzung nicht gefunden.'){if(isAdmin)stored.activeAdmin='';else stored.activePlayer='';persist();state=null;code='';token='';notice('');render();}else if(epoch===actionEpoch&&++pollFailures>=3)notice('Verbindung unterbrochen. Es wird weiter versucht.');}finally{polling=false;}}
 setInterval(poll,4500+Math.floor(Math.random()*2500));if(!isAdmin&&room){code='';token='';render();joinRoom(room);}else{render();if(code&&token)poll();}
 })();
