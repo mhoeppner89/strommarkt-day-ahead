@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <title>Strommarkt</title>
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
   <script src="config.js" defer></script>
-  <script src="app.js?v=15" defer></script>
+  <script src="app.js?v=16" defer></script>
 </head>
 <body>
 <header class="masthead"><h1>Strommarkt</h1><a id="admin-link" href="?leitung=1">Spielleitung</a></header>
@@ -16,6 +16,7 @@
 <p id="working" class="hint hidden" role="status">Bitte warten …</p>
 <section id="join" class="panel start hidden">
   <h2>Teilnehmen</h2>
+  <section class="rooms"><h3>Offene Räume</h3><div id="public-rooms" aria-live="polite">Räume werden geladen …</div></section>
   <form id="join-form" class="inline-form">
     <label for="join-code">Sitzungscode</label>
     <div class="input-row"><input id="join-code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" required><button class="button primary" type="submit">Beitreten</button></div>
@@ -31,6 +32,7 @@
 <section id="admin-create" class="panel start hidden">
   <h2>Neue Sitzung</h2>
   <form id="create-form" class="inline-form"><button type="submit" class="button primary">Sitzung erstellen</button></form>
+  <section class="rooms"><h3>Offene Räume</h3><div id="admin-rooms" aria-live="polite">Räume werden geladen …</div></section>
   <details><summary>Sitzung fortsetzen</summary><form id="resume-form" class="inline-form"><label for="resume-code">Sitzungscode</label><div class="input-row"><input id="resume-code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" required><button class="button secondary" type="submit">Fortsetzen</button></div><p class="hint">Nur auf dem Gerät, auf dem die Sitzung erstellt wurde.</p></form></details>
 </section>
 <section id="game" class="hidden">
