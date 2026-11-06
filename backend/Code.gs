@@ -102,8 +102,7 @@ function state(s,viewer){
 function dispatch(action,p,deferState){
   const respond=(s,viewer)=>deferState?{session:s,viewer:viewer}:state(s,viewer);
   if(action==='create'){
-    const instructorHash=PropertiesService.getScriptProperties().getProperty('INSTRUCTOR_KEY_HASH');
-    if(!instructorHash||requireToken(p.instructorKey)!==instructorHash)throw Error('Leitungszugang ungültig.');
+    if(p.instructorPassword!=='EVWL2026')throw Error('Leitungszugang ungültig.');
     const adminHash=requireToken(p.token),duration=0;
     const existing=rows('Sitzungen').find(x=>x.adminHash===adminHash);if(existing)return respond(existing,'admin');
     const s={code:newCode(),adminHash:adminHash,status:'lobby',round:0,deadline:'',duration:duration,created:new Date().toISOString()};append('Sitzungen',s);return respond(s,'admin');
