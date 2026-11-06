@@ -55,7 +55,7 @@ function drawChart(data,mode){const holder=$('chart');holder.replaceChildren();c
  else $('benchmark').textContent='Bei diesen privaten Werten gibt es keinen beidseitig vorteilhaften Handel.';
 }
 function render(){
- visible('admin-link',!isAdmin&&!code);visible('join',!code&&!isAdmin);visible('admin-login',isAdmin&&!adminUnlocked);visible('admin-create',!code&&isAdmin&&adminUnlocked);visible('game',Boolean(code&&state&&(!isAdmin||adminUnlocked)));if(!state||!code||isAdmin&&!adminUnlocked)return;
+ visible('admin-link',!isAdmin);visible('join',!code&&!isAdmin);visible('admin-login',isAdmin&&!adminUnlocked);visible('admin-create',!code&&isAdmin&&adminUnlocked);visible('game',Boolean(code&&state&&(!isAdmin||adminUnlocked)));if(!state||!code||isAdmin&&!adminUnlocked)return;
  const s=state;$('session-code').textContent=s.code;visible('share',isAdmin&&s.status==='lobby');
  if(isAdmin){const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('raum',s.code);$('room-link').href=url.href;$('room-link').textContent=url.href;}
  $('round-caption').textContent=s.round?`Runde ${s.round} von 5`:'Markt';
