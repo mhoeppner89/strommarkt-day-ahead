@@ -41,3 +41,33 @@ assert(http('close',{code:fc,token:fh,round:1}).ok);assert.equal(http('phase',{c
 fast.cache.clear();assert.equal(http('phase',{code:fc}).data,null);assert.equal(http('playerState',{code:fc,token:fa}).data.status,'review');
 assert(http('start',{code:fc,token:fh,previousRound:1}).ok);assert.equal(http('phase',{code:fc}).data,'open:2');
 console.log('Fast phase checks track transitions and recover from cache eviction.');
+
+// Room discovery and host closure, including a room created on another device.
+{
+const discovery=createFake(),dc=discovery.context;dc.install();
+const call=(action,payload={})=>JSON.parse(dc.doGet({parameter:{action,payload:JSON.stringify(payload)}}).body);
+const password='EVWL2026', hostA='a'.repeat(48),hostB='b'.repeat(48),buyer='c'.repeat(48),seller='d'.repeat(48);
+assert.deepEqual(Array.from(call('publicRooms').data),[]);
+const a=call('create',{token:hostA,instructorPassword:password}).data.code;
+const b=call('create',{token:hostB,instructorPassword:password}).data.code;
+assert.equal(call('publicRooms').data.length,2);
+assert.equal(call('adminRooms',{instructorPassword:'bad'}).ok,false);
+assert.equal(call('adminRooms',{instructorPassword:password}).data.length,2);
+call('join',{code:a,token:buyer});call('join',{code:a,token:seller});
+call('chooseRole',{code:a,token:buyer,role:'Kauf'});call('chooseRole',{code:a,token:seller,role:'Verkauf'});
+call('start',{code:a,token:hostA,previousRound:0});
+assert.deepEqual(call('publicRooms').data.map(r=>r.code),[b]);
+assert.equal(call('adminRooms',{instructorPassword:password}).data.find(r=>r.code===a).status,'open');
+assert.equal(call('endSession',{code:a,instructorPassword:'bad'}).ok,false);
+assert.equal(call('phase',{code:a}).data,'open:1');
+assert.equal(call('endSession',{code:a,instructorPassword:password}).data.status,'closed');
+assert.equal(call('phase',{code:a}).data,'closed:1');
+assert.equal(call('playerState',{code:a,token:buyer}).data.status,'closed');
+assert.equal(call('bid',{code:a,token:buyer,round:1,bid:100}).ok,false);
+assert.equal(call('join',{code:a,token:buyer}).ok,false);
+assert.equal(call('adminRooms',{instructorPassword:password}).data.length,1);
+assert.equal(call('endSession',{code:b,instructorPassword:password}).data.status,'closed');
+assert.equal(call('publicRooms').data.length,0);
+assert.equal(call('adminRooms',{instructorPassword:password}).data.length,0);
+console.log('Room discovery, cross-device closure, phase updates and closed-room access passed.');
+}
