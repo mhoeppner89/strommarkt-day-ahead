@@ -5,12 +5,14 @@ Ein synchrones Lehrspiel für eine Lieferstunde und fünf Auktionsrunden. Eine S
 ## Ablauf
 
 1. Die Spielleitung öffnet auf der Startseite „Spielleitung“, gibt das Passwort ein, erstellt eine Sitzung und teilt den Raumlink.
-2. Studierende treten über den Raumlink bei. Vor dem Start wählen alle einmalig ihre Rolle als Käufer oder Verkäufer. Die Spielleitung sieht die Anzahl der gewählten Rollen. Mindestens zwei Personen sind nötig; alle müssen ihre Rolle gewählt haben.
+2. Studierende sehen beitretbare Räume auf der Startseite und können dort oder über den Raumlink beitreten. Vor dem Start wählen alle einmalig ihre Rolle als Käufer oder Verkäufer. Die Spielleitung sieht die Anzahl der gewählten Rollen. Mindestens zwei Personen sind nötig; alle müssen ihre Rolle gewählt haben.
 3. Jede Person gibt je Runde ein verdecktes ganzzahliges Gebot in €/MWh ab und darf es bis zum Rundenschluss ändern.
 4. Die Spielleitung beendet jede Runde per Klick. Die nächste Runde wird von der Spielleitung gestartet.
 5. Nach fünf Runden zeigt das Spiel die Kurven aus privaten Werten und die Kurven der abgegebenen Gebote jeder Runde.
 
 Der Browser speichert einen zufälligen Zugangsschlüssel zur Wiederaufnahme auf demselben Gerät. Die Spielleitung kann über „Sitzung fortsetzen“ eine dort erstellte Sitzung wieder öffnen. Studierende können einen begonnenen Markt nur mit ihrem bereits gespeicherten Schlüssel wieder betreten. Browserdaten nicht während der Sitzung löschen.
+
+Nach der Anmeldung zeigt die Spielleitung alle Warteräume und laufenden Sitzungen. Sie kann jeden dieser Räume schließen, auch wenn er auf einem anderen Gerät erstellt wurde. Eine beim Schließen laufende Runde wird nicht ausgewertet; vorhandene Ergebnisse bleiben in der Tabelle. Der Button „Alle Räume“ führt aus einer Sitzung zurück zur Übersicht. Die Fortsetzung einer Sitzung benötigt weiterhin den auf dem ursprünglichen Gerät gespeicherten Leitungszugang.
 
 ## Auktion
 
